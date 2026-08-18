@@ -5,9 +5,9 @@
   "main": "server/server.js",
   "scripts": {
     "build": "npm run build:client && npm run build:server",
-    "build:client": "cd client && npm install && npm run build",
+    "build:client": "cd client && npm install --include=dev && npm run build",
     "build:server": "cd server && npm install",
-    "start": "cd server && node server.js",
+    "start": "node server/server.js",
     "test": "node run_master_qa_audit.js"
   },
   "dependencies": {
