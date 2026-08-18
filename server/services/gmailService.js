@@ -2,36 +2,60 @@ const { google } = require('googleapis');
 const { getRow, runQuery } = require('../db');
 
 /**
+ * Derive Dynamic Environment-Aware Redirect URI
+ */
+function getDynamicRedirectUri(customRedirectUri = '') {
+  if (customRedirectUri && customRedirectUri.trim()) {
+    return customRedirectUri.trim();
+  }
+  if (process.env.GOOGLE_REDIRECT_URI && process.env.GOOGLE_REDIRECT_URI.trim()) {
+    return process.env.GOOGLE_REDIRECT_URI.trim();
+  }
+  if (process.env.APP_URL && process.env.APP_URL.trim()) {
+    const cleanAppUrl = process.env.APP_URL.trim().replace(/\/+$/, '');
+    return `${cleanAppUrl}/api/gmail/oauth/callback`;
+  }
+  return 'http://localhost:5001/api/gmail/oauth/callback';
+}
+
+/**
  * Validate Google OAuth Credentials in Environment
  */
-function validateOAuthCredentials() {
+function validateOAuthCredentials(customRedirectUri = '') {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:5001/api/gmail/oauth/callback';
+  const redirectUri = getDynamicRedirectUri(customRedirectUri);
 
-  if (!clientId || !clientId.trim() || clientId.includes('dummy')) {
-    throw new Error('GOOGLE_CLIENT_ID is missing or not configured in server/.env file.');
-  }
-  if (!clientSecret || !clientSecret.trim() || clientSecret.includes('dummy')) {
-    throw new Error('GOOGLE_CLIENT_SECRET is missing or not configured in server/.env file.');
+  const isConfigured = Boolean(
+    clientId && clientId.trim() && !clientId.includes('dummy') &&
+    clientSecret && clientSecret.trim() && !clientSecret.includes('dummy')
+  );
+
+  if (!isConfigured) {
+    throw new Error('Google OAuth credentials (GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET) are missing or not configured.');
   }
 
-  return { clientId: clientId.trim(), clientSecret: clientSecret.trim(), redirectUri: redirectUri.trim() };
+  return {
+    isConfigured: true,
+    clientId: clientId.trim(),
+    clientSecret: clientSecret.trim(),
+    redirectUri: redirectUri.trim()
+  };
 }
 
 /**
  * Initialize Google OAuth 2.0 Client
  */
-function getOAuth2Client() {
-  const { clientId, clientSecret, redirectUri } = validateOAuthCredentials();
+function getOAuth2Client(customRedirectUri = '') {
+  const { clientId, clientSecret, redirectUri } = validateOAuthCredentials(customRedirectUri);
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
 /**
  * Generate Google OAuth 2.0 Authorization URL with Account Chooser
  */
-function getAuthUrl(state = '') {
-  const oauth2Client = getOAuth2Client();
+function getAuthUrl(state = '', customRedirectUri = '') {
+  const oauth2Client = getOAuth2Client(customRedirectUri);
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'select_account consent',

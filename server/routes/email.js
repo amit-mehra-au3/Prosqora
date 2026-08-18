@@ -93,29 +93,31 @@ router.use(authenticateToken);
 // 1. GMAIL OAUTH STATUS & AUTH URL
 router.get('/gmail/auth-url', (req, res) => {
   try {
-    const url = getAuthUrl(req.user.user_id);
-    res.json({ success: true, url });
+    const hostHeader = req.get('host');
+    const protocol = req.protocol || 'http';
+    const computedRedirectUri = process.env.GOOGLE_REDIRECT_URI || `${protocol}://${hostHeader}/api/gmail/oauth/callback`;
+
+    const url = getAuthUrl(req.user.user_id, computedRedirectUri);
+    res.json({ success: true, url, redirectUri: computedRedirectUri });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message, reason: 'configuration_error' });
+    res.status(400).json({
+      success: false,
+      configured: false,
+      error: err.message,
+      reason: 'configuration_error'
+    });
   }
 });
 
-router.get('/gmail/status', async (req, res) => {
+router.get(['/gmail/status', '/gmail/oauth/status'], async (req, res) => {
   const targetEmail = 'amautomationtrading@gmail.com';
+  const hostHeader = req.get('host');
+  const protocol = req.protocol || 'http';
+  const computedRedirectUri = process.env.GOOGLE_REDIRECT_URI || (process.env.APP_URL ? `${process.env.APP_URL.replace(/\/+$/, '')}/api/gmail/oauth/callback` : `${protocol}://${hostHeader}/api/gmail/oauth/callback`);
 
-  try {
-    validateOAuthCredentials();
-  } catch (configErr) {
-    return res.json({
-      success: true,
-      connected: false,
-      reason: 'configuration_error',
-      email: '',
-      targetEmail,
-      isValidAccount: false,
-      message: configErr.message
-    });
-  }
+  const hasClientId = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_ID.trim() && !process.env.GOOGLE_CLIENT_ID.includes('dummy'));
+  const hasClientSecret = Boolean(process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_CLIENT_SECRET.trim() && !process.env.GOOGLE_CLIENT_SECRET.includes('dummy'));
+  const isConfigured = hasClientId && hasClientSecret;
 
   try {
     const tokenRow = await getRow(`SELECT * FROM gmail_tokens WHERE user_id = ?`, [req.user.user_id]);
@@ -123,37 +125,98 @@ router.get('/gmail/status', async (req, res) => {
     if (!tokenRow) {
       return res.json({
         success: true,
+        configured: isConfigured,
+        clientIdConfigured: hasClientId,
+        redirectUri: computedRedirectUri,
         connected: false,
-        reason: 'not_connected',
+        reason: isConfigured ? 'not_connected' : 'configuration_error',
         email: '',
         targetEmail,
         isValidAccount: false,
-        message: 'No Gmail account connected. Click Connect Gmail to authenticate.'
+        message: isConfigured ? 'No Gmail account connected. Click Connect Gmail to authenticate.' : 'Google OAuth setup required.'
       });
     }
 
     const isValidAccount = tokenRow.email.toLowerCase() === targetEmail.toLowerCase();
-    if (!isValidAccount) {
-      return res.json({
-        success: true,
-        connected: true,
-        reason: 'wrong_account',
-        email: tokenRow.email,
-        targetEmail,
-        isValidAccount: false,
-        message: `Wrong account connected (${tokenRow.email}). Please disconnect and connect ${targetEmail}.`
-      });
+    res.json({
+      success: true,
+      configured: isConfigured,
+      clientIdConfigured: hasClientId,
+      redirectUri: computedRedirectUri,
+      connected: true,
+      reason: isValidAccount ? 'connected' : 'wrong_account',
+      email: tokenRow.email,
+      targetEmail,
+      isValidAccount,
+      connectedAt: tokenRow.connected_at,
+      message: isValidAccount ? `Verified official business Gmail account (${tokenRow.email}) is active.` : `Connected (${tokenRow.email}).`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Save Google OAuth Application Credentials (Admin / Super Admin Only)
+router.post('/gmail/oauth/config', async (req, res) => {
+  const role = (req.user?.role || '').toLowerCase();
+  if (role !== 'admin' && role !== 'super_admin') {
+    return res.status(403).json({ success: false, error: 'Only Workspace Admins or Super Admins can configure Google OAuth application credentials.' });
+  }
+
+  try {
+    const { clientId, clientSecret, redirectUri } = req.body;
+    if (!clientId || !clientId.trim()) {
+      return res.status(400).json({ success: false, error: 'Google Client ID is required.' });
+    }
+    if (!clientSecret || !clientSecret.trim()) {
+      return res.status(400).json({ success: false, error: 'Google Client Secret is required.' });
+    }
+
+    // Set process environment variables in memory
+    process.env.GOOGLE_CLIENT_ID = clientId.trim();
+    process.env.GOOGLE_CLIENT_SECRET = clientSecret.trim();
+    if (redirectUri && redirectUri.trim()) {
+      process.env.GOOGLE_REDIRECT_URI = redirectUri.trim();
+    }
+
+    // Safely update .env file if it exists locally
+    const fs = require('fs');
+    const path = require('path');
+    const envPath = path.resolve(__dirname, '../../.env');
+    if (fs.existsSync(envPath)) {
+      let envContent = fs.readFileSync(envPath, 'utf8');
+      const updateEnvVar = (key, val) => {
+        const regex = new RegExp(`^${key}=.*$`, 'm');
+        if (regex.test(envContent)) {
+          envContent = envContent.replace(regex, `${key}=${val}`);
+        } else {
+          envContent += `\n${key}=${val}`;
+        }
+      };
+      updateEnvVar('GOOGLE_CLIENT_ID', clientId.trim());
+      updateEnvVar('GOOGLE_CLIENT_SECRET', clientSecret.trim());
+      if (redirectUri && redirectUri.trim()) {
+        updateEnvVar('GOOGLE_REDIRECT_URI', redirectUri.trim());
+      }
+      fs.writeFileSync(envPath, envContent, 'utf8');
     }
 
     res.json({
       success: true,
-      connected: true,
-      reason: 'connected',
-      email: tokenRow.email,
-      targetEmail,
-      isValidAccount: true,
-      connectedAt: tokenRow.connected_at,
-      message: `Verified official business Gmail account (${tokenRow.email}) is active.`
+      message: 'Google OAuth credentials saved successfully.'
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Disconnect Connected Gmail Account
+router.post('/gmail/disconnect', async (req, res) => {
+  try {
+    await runQuery(`DELETE FROM gmail_tokens WHERE user_id = ?`, [req.user.user_id]);
+    res.json({
+      success: true,
+      message: 'Gmail account disconnected successfully.'
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
