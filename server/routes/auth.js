@@ -11,6 +11,7 @@ function sendAuthToken(user, res, message = 'Success') {
   const payload = {
     id: user.id,
     user_id: user.user_id,
+    workspace_id: user.workspace_id || user.user_id,
     full_name: user.full_name,
     company_name: user.company_name,
     email: user.email,
@@ -35,7 +36,81 @@ function sendAuthToken(user, res, message = 'Success') {
   });
 }
 
-// 1. SIGNUP ENDPOINT
+// 1. PUBLIC CUSTOMER ADMIN REGISTRATION ENDPOINT
+router.post('/register-admin', async (req, res) => {
+  try {
+    const { full_name, company_name, email, password, confirm_password, phone, gstin, plan_id } = req.body;
+
+    if (!full_name || !company_name || !email || !password) {
+      return res.status(400).json({ error: 'Full Name, Company Name, Email, and Password are required.' });
+    }
+
+    if (password !== confirm_password) {
+      return res.status(400).json({ error: 'Passwords do not match.' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+    }
+
+    const emailClean = email.trim().toLowerCase();
+    const existing = await getRow(`SELECT * FROM users WHERE email = ?`, [emailClean]);
+    if (existing) {
+      return res.status(400).json({ error: 'An account with this email address already exists.' });
+    }
+
+    // Require valid plan selection
+    const targetPlanId = (plan_id || 'growth').toLowerCase();
+    const plan = await getRow(`SELECT * FROM plans WHERE plan_id = ?`, [targetPlanId]);
+    if (!plan) {
+      return res.status(400).json({ error: 'Please choose a valid pricing plan.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(password, salt);
+    const user_id = 'usr_' + crypto.randomBytes(8).toString('hex');
+    const workspace_id = user_id; // Primary Customer Admin owns their workspace
+
+    const result = await runQuery(
+      `INSERT INTO users (user_id, workspace_id, full_name, company_name, email, password_hash, phone, gstin, role, status, created_by, last_login_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'admin', 'active', ?, CURRENT_TIMESTAMP)`,
+      [user_id, workspace_id, full_name.trim(), company_name.trim(), emailClean, password_hash, (phone || '').trim(), (gstin || '').trim(), user_id]
+    );
+
+    const newUser = await getRow(`SELECT * FROM users WHERE id = ?`, [result.lastID]);
+
+    // Create Initial Subscription for Workspace
+    const orderId = 'order_inr_' + crypto.randomBytes(8).toString('hex');
+    await runQuery(
+      `INSERT INTO subscriptions (workspace_id, user_id, plan_id, status, razorpay_order_id, amount_paid, currency)
+       VALUES (?, ?, ?, 'active', ?, ?, 'INR')`,
+      [workspace_id, user_id, plan.plan_id, orderId, plan.price]
+    );
+
+    // Audit Log Admin Registration Event
+    try {
+      const { logAuditEvent } = require('../services/auditService');
+      await logAuditEvent({
+        userId: user_id,
+        userName: full_name.trim(),
+        userEmail: emailClean,
+        userRole: 'admin',
+        workspaceId: workspace_id,
+        action: 'Customer Admin Registered',
+        targetType: 'User',
+        targetId: user_id,
+        details: `Customer Admin registered for company "${company_name.trim()}" with ${plan.name} Plan (₹${plan.price}/mo INR).`
+      });
+    } catch (e) {}
+
+    return sendAuthToken(newUser, res, `Welcome to Prosqora! Your workspace is activated on ${plan.name} Plan.`);
+  } catch (err) {
+    console.error('Customer Admin Registration Error:', err);
+    res.status(500).json({ error: 'Failed to create Customer Admin account.' });
+  }
+});
+
+// 2. SIGNUP ENDPOINT (LEGACY FALLBACK)
 router.post('/signup', async (req, res) => {
   try {
     const { full_name, company_name, email, password, confirm_password } = req.body;
@@ -62,10 +137,14 @@ router.post('/signup', async (req, res) => {
     const password_hash = await bcrypt.hash(password, salt);
     const user_id = 'usr_' + crypto.randomBytes(8).toString('hex');
 
+    const adminCountRow = await getRow(`SELECT COUNT(*) as count FROM users WHERE role = 'admin' OR role = 'ADMIN'`);
+    const isFirstUser = !adminCountRow || adminCountRow.count === 0;
+    const userRole = isFirstUser ? 'admin' : (req.body.role === 'user' ? 'user' : 'admin');
+
     const result = await runQuery(
-      `INSERT INTO users (user_id, full_name, company_name, email, password_hash, last_login_at)
-       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-      [user_id, full_name.trim(), (company_name || '').trim(), emailClean, password_hash]
+      `INSERT INTO users (user_id, full_name, company_name, email, password_hash, role, status, last_login_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)`,
+      [user_id, full_name.trim(), (company_name || '').trim(), emailClean, password_hash, userRole]
     );
 
     const newUser = await getRow(`SELECT * FROM users WHERE id = ?`, [result.lastID]);
@@ -76,28 +155,56 @@ router.post('/signup', async (req, res) => {
   }
 });
 
-// 2. LOGIN ENDPOINT
+// 2. UNIFIED LOGIN ENDPOINT (ADMIN & NORMAL USER)
 router.post('/login', async (req, res) => {
   try {
-    const { email, password, remember } = req.body;
+    const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required.' });
+      return res.status(400).json({ error: 'Please enter both email and password.' });
     }
 
     const emailClean = email.trim().toLowerCase();
     const user = await getRow(`SELECT * FROM users WHERE email = ?`, [emailClean]);
 
     if (!user) {
-      return res.status(401).json({ error: 'Email or password is incorrect.' });
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    if (user.status === 'disabled' || user.status === 'deleted') {
+      return res.status(403).json({ error: 'Your account or workspace is no longer active. Please contact support.' });
+    }
+
+    const workspaceOwnerId = user.workspace_id || user.user_id;
+    if (workspaceOwnerId !== user.user_id) {
+      const owner = await getRow(`SELECT status FROM users WHERE user_id = ?`, [workspaceOwnerId]);
+      if (owner && (owner.status === 'disabled' || owner.status === 'deleted')) {
+        return res.status(403).json({ error: 'Your workspace is no longer active. Please contact support.' });
+      }
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      return res.status(401).json({ error: 'Email or password is incorrect.' });
+      return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
     await runQuery(`UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?`, [user.id]);
+
+    // Audit Log Login Event
+    try {
+      const { logAuditEvent } = require('../services/auditService');
+      await logAuditEvent({
+        userId: user.user_id,
+        userName: user.full_name,
+        userEmail: user.email,
+        userRole: user.role || 'user',
+        workspaceId: user.user_id,
+        action: 'User Login',
+        targetType: 'User',
+        targetId: user.user_id,
+        details: `User logged in: ${user.full_name} (${user.email})`
+      });
+    } catch (e) {}
 
     return sendAuthToken(user, res, 'Welcome back!');
   } catch (err) {

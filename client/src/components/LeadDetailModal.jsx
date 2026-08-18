@@ -19,7 +19,9 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
-  Terminal
+  Terminal,
+  ShieldCheck,
+  Activity
 } from 'lucide-react';
 
 export default function LeadDetailModal({ lead, onClose, onUpdateLead }) {
@@ -40,6 +42,44 @@ export default function LeadDetailModal({ lead, onClose, onUpdateLead }) {
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [showEvidenceDebug, setShowEvidenceDebug] = useState(false);
+
+  // Email Activity & Suppression State
+  const [emailLogs, setEmailLogs] = useState([]);
+  const [suppressed, setSuppressed] = useState(!!lead.suppressed);
+
+  const [leadActivity, setLeadActivity] = useState([]);
+
+  React.useEffect(() => {
+    if (lead && lead.id) {
+      fetchEmailHistory();
+      fetchLeadActivityHistory();
+    }
+  }, [lead.id]);
+
+  const fetchEmailHistory = async () => {
+    try {
+      const res = await axios.get(`/api/leads/${lead.id}/email-history`);
+      if (res.data.success) {
+        setEmailLogs(res.data.logs || []);
+      }
+    } catch (e) {}
+  };
+
+  const fetchLeadActivityHistory = async () => {
+    try {
+      const res = await axios.get(`/api/leads/${lead.id}/activity`);
+      if (res.data.success) {
+        setLeadActivity(res.data.activity || []);
+      }
+    } catch (e) {}
+  };
+
+  const handleToggleSuppression = async (val) => {
+    setSuppressed(val);
+    try {
+      await axios.post(`/api/leads/${lead.id}/suppress`, { suppressed: val });
+    } catch (e) {}
+  };
 
   // Parse category list & evidence if string
   let categoryList = [];
@@ -196,6 +236,88 @@ export default function LeadDetailModal({ lead, onClose, onUpdateLead }) {
             </div>
           )}
 
+          {/* Website Verification & Single Source of Truth Status Section */}
+          <div className="p-4 bg-industrial-950 rounded-xl border border-industrial-800 space-y-3">
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-brand-orange" />
+              <span>Website Verification & Single-Source Status</span>
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-mono">
+              <div className="p-3 bg-industrial-900 rounded-lg border border-industrial-800">
+                <span className="text-[10px] text-industrial-400 block font-sans">Website Status</span>
+                <span className={`font-bold mt-1 inline-block px-2 py-0.5 rounded text-[11px] ${
+                  (lead.website_status || '').includes('Accessible') || (lead.website_status || '').includes('Reachable') || (lead.website_status || '').includes('Working')
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : (lead.website_status || '').includes('Redirected')
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                }`}>
+                  {lead.website_status || '🔴 Not Accessible'}
+                </span>
+              </div>
+
+              <div className="p-3 bg-industrial-900 rounded-lg border border-industrial-800">
+                <span className="text-[10px] text-industrial-400 block font-sans">Verification Status</span>
+                <span className={`font-bold mt-1 inline-block px-2 py-0.5 rounded text-[11px] ${
+                  lead.verification_status === 'Verified'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                }`}>
+                  {lead.verification_status || 'Needs Review'}
+                </span>
+              </div>
+
+              <div className="p-3 bg-industrial-900 rounded-lg border border-industrial-800">
+                <span className="text-[10px] text-industrial-400 block font-sans">Verified At</span>
+                <span className="text-white font-bold block mt-1">
+                  {lead.verified_at ? new Date(lead.verified_at).toLocaleString() : 'Not Verified'}
+                </span>
+              </div>
+
+              <div className="p-3 bg-industrial-900 rounded-lg border border-industrial-800">
+                <span className="text-[10px] text-industrial-400 block font-sans">Last Website Check</span>
+                <span className="text-white font-bold block mt-1">
+                  {lead.last_website_check_at ? new Date(lead.last_website_check_at).toLocaleString() : (lead.created_at ? new Date(lead.created_at).toLocaleString() : 'Recently')}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Lead Activity & Audit History Trail Section */}
+          <div className="p-4 bg-industrial-950 rounded-xl border border-industrial-800 space-y-3">
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Activity className="w-4 h-4 text-brand-orange" />
+              <span>Lead Activity & Audit Traceability</span>
+            </h3>
+
+            {leadActivity.length === 0 ? (
+              <p className="text-xs text-industrial-400 font-mono italic p-1">No recorded audit history for this lead yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {leadActivity.map((act) => (
+                  <div key={act.id} className="p-2.5 bg-industrial-900 rounded-lg border border-industrial-800 text-xs font-mono flex flex-col md:flex-row md:items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white">{act.user_name || 'User'}</span>
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                          act.user_role === 'admin' ? 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30' : 'bg-industrial-800 text-industrial-300'
+                        }`}>
+                          {act.user_role === 'admin' ? 'ADMIN' : 'USER'}
+                        </span>
+                        <span className="text-emerald-400 font-bold">{act.action}</span>
+                      </div>
+                      <p className="text-[11px] text-industrial-300 mt-0.5">{act.details}</p>
+                    </div>
+                    <span className="text-[10px] text-industrial-500 shrink-0">
+                      {new Date(act.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* AI Automation Opportunities Banner */}
           <div className="p-4 bg-gradient-to-r from-brand-orange/10 via-industrial-900 to-amber-500/10 border border-brand-orange/30 rounded-xl space-y-2">
             <div className="flex items-center gap-2 text-brand-orange font-semibold text-xs tracking-wider uppercase">
@@ -313,6 +435,54 @@ export default function LeadDetailModal({ lead, onClose, onUpdateLead }) {
                         >
                           ✉️ Mail
                         </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Do Not Contact Suppression Option */}
+                  <div className="p-2.5 bg-industrial-950/80 rounded-xl border border-industrial-800 flex items-center justify-between">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-industrial-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={suppressed}
+                        onChange={(e) => handleToggleSuppression(e.target.checked)}
+                        className="rounded border-industrial-700 text-red-500 focus:ring-red-500 bg-industrial-900"
+                      />
+                      <span>Mark as Do Not Contact (Suppress from campaigns)</span>
+                    </label>
+                    {suppressed && (
+                      <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-red-500/20 text-red-400 border border-red-500/30">
+                        🚫 Suppressed
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Email Activity History Log */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-industrial-400 font-bold text-xs uppercase tracking-wider block">
+                      Email Activity History ({emailLogs.length})
+                    </span>
+
+                    <div className="max-h-36 overflow-y-auto p-2.5 bg-industrial-950/80 rounded-xl border border-industrial-800 space-y-1.5 text-xs font-mono">
+                      {emailLogs.length === 0 ? (
+                        <p className="text-industrial-500 text-[11px]">No emails sent to this company yet.</p>
+                      ) : (
+                        emailLogs.map((log) => (
+                          <div key={log.id} className="p-2 bg-industrial-900 rounded border border-industrial-800 space-y-0.5">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-white text-[11px] truncate max-w-xs">{log.subject}</span>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                                log.status === 'Sent' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                              }`}>
+                                {log.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-industrial-400">
+                              <span>To: {log.recipient_email}</span>
+                              <span>{new Date(log.sent_at || Date.now()).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        ))
                       )}
                     </div>
                   </div>

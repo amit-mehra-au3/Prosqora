@@ -6,32 +6,54 @@ import {
   CalendarCheck,
   FileSpreadsheet,
   Settings,
+  Mail,
+  FileText,
   Cpu,
   ShieldCheck,
+  Crown,
   AlertTriangle
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Sidebar({ activePage, setActivePage, isDemoMode }) {
+  const { user } = useAuth();
+  const userRole = (user?.role || '').toLowerCase();
+  const isSuperAdmin = userRole === 'super_admin';
+  const isAdmin = userRole === 'admin' || isSuperAdmin;
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'scan-website', label: 'Scan Website', icon: Globe },
     { id: 'all-leads', label: 'All Leads', icon: Database },
-    { id: 'follow-ups', label: 'Follow-ups', icon: CalendarCheck },
-    { id: 'export', label: 'Import / Export', icon: FileSpreadsheet },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'email-campaigns', label: 'Email Campaigns', icon: Mail },
+    { id: 'email-templates', label: 'Email Templates', icon: FileText },
+    { id: 'follow-ups', label: 'Follow-ups', icon: CalendarCheck }
   ];
+
+  // Admin-Only Navigation Items
+  if (isAdmin) {
+    menuItems.push({ id: 'export', label: 'Import / Export', icon: FileSpreadsheet });
+    menuItems.push({ id: 'admin', label: 'Admin Panel', icon: ShieldCheck });
+  }
+
+  // Super Admin Only Portal Item
+  if (isSuperAdmin) {
+    menuItems.push({ id: 'super-admin', label: 'Super Admin Portal', icon: Crown });
+  }
+
+  menuItems.push({ id: 'settings', label: 'Settings', icon: Settings });
 
   return (
     <aside className="w-64 bg-industrial-900 border-r border-industrial-800 flex flex-col justify-between shrink-0 h-screen sticky top-0">
       <div>
         {/* Brand Header */}
         <div className="p-6 border-b border-industrial-800 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-orange to-amber-500 flex items-center justify-center shadow-lg shadow-brand-orange/20">
-            <Cpu className="w-6 h-6 text-white" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-orange to-amber-500 flex items-center justify-center shadow-lg shadow-brand-orange/20 font-black text-white text-xl tracking-tighter">
+            P
           </div>
           <div>
-            <h1 className="font-extrabold text-lg text-white tracking-tight leading-none">AutoLead</h1>
-            <p className="text-xs text-industrial-400 font-mono mt-1">Industrial Sales Intelligence CRM</p>
+            <h1 className="font-extrabold text-lg text-white tracking-wider leading-none">PROSQORA</h1>
+            <p className="text-[11px] text-industrial-400 font-mono mt-1">Lead Discovery & CRM</p>
           </div>
         </div>
 
@@ -71,9 +93,9 @@ export default function Sidebar({ activePage, setActivePage, isDemoMode }) {
       <div className="p-4 border-t border-industrial-800 text-xs text-industrial-400 space-y-2">
         <div className="flex items-center gap-2 text-emerald-400 font-mono">
           <ShieldCheck className="w-4 h-4" />
-          <span>CRM Active</span>
+          <span>CRM Active ({isAdmin ? 'ADMIN' : 'NORMAL USER'})</span>
         </div>
-        <p className="text-[11px] text-industrial-500">v2.1.0 • Multi-Tenant CRM Workspace</p>
+        <p className="text-[11px] text-industrial-500">v2.2.0 • Multi-Tenant RBAC CRM</p>
       </div>
     </aside>
   );

@@ -3,7 +3,10 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import axios from 'axios';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import PricingPage from './pages/PricingPage';
 import SignupPage from './pages/SignupPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ProfilePage from './pages/ProfilePage';
@@ -15,16 +18,34 @@ import FollowupsPage from './pages/FollowupsPage';
 import ManualScanPage from './pages/ManualScanPage';
 import ExportPage from './pages/ExportPage';
 import SettingsPage from './pages/SettingsPage';
+import CampaignsPage from './pages/CampaignsPage';
+import EmailTemplatesPage from './pages/EmailTemplatesPage';
+import AdminPanelPage from './pages/AdminPanelPage';
+import SuperAdminPanelPage from './pages/SuperAdminPanelPage';
 import LeadDetailModal from './components/LeadDetailModal';
 import DuplicateModal from './components/DuplicateModal';
 import { CheckCircle, AlertCircle, Bell } from 'lucide-react';
 
-function AuthenticatedCrmLayout() {
+function AuthenticatedCrmLayout({ initialPage = 'dashboard' }) {
   const { user } = useAuth();
-  const [activePage, setActivePage] = useState('dashboard');
+  const userRole = (user?.role || '').toLowerCase();
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isSuperAdmin = userRole === 'super_admin';
+
+  const [activePage, setActivePage] = useState(initialPage);
   const [selectedLead, setSelectedLead] = useState(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Role Protection Redirect for Normal Users
+  // Role Protection Redirects
+  useEffect(() => {
+    if (activePage === 'super-admin' && !isSuperAdmin) {
+      setActivePage('dashboard');
+    } else if (!isAdmin && (activePage === 'admin' || activePage === 'export')) {
+      setActivePage('dashboard');
+    }
+  }, [activePage, isAdmin, isSuperAdmin]);
 
   // Duplicate Modal State
   const [duplicateData, setDuplicateData] = useState(null);
@@ -156,6 +177,14 @@ function AuthenticatedCrmLayout() {
             />
           )}
 
+          {activePage === 'email-campaigns' && (
+            <CampaignsPage />
+          )}
+
+          {activePage === 'email-templates' && (
+            <EmailTemplatesPage />
+          )}
+
           {activePage === 'follow-ups' && (
             <FollowupsPage
               setSelectedLead={setSelectedLead}
@@ -170,8 +199,16 @@ function AuthenticatedCrmLayout() {
             />
           )}
 
-          {activePage === 'export' && (
+          {activePage === 'export' && isAdmin && (
             <ExportPage />
+          )}
+
+          {activePage === 'admin' && isAdmin && (
+            <AdminPanelPage />
+          )}
+
+          {activePage === 'super-admin' && isSuperAdmin && (
+            <SuperAdminPanelPage />
           )}
 
           {activePage === 'settings' && (
@@ -230,17 +267,110 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Public Auth Routes */}
+          {/* Public Routes */}
+          <Route path="/" element={<HomePage />} />
+          <Route path="/pricing" element={<PricingPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
-          {/* Protected SaaS Application Route */}
+          {/* Protected CRM Application Routes */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedCrmLayout initialPage="dashboard" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/leads"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedCrmLayout initialPage="all-leads" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedCrmLayout initialPage="admin" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/super-admin"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedCrmLayout initialPage="super-admin" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/scan"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedCrmLayout initialPage="scan-website" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/campaigns"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedCrmLayout initialPage="email-campaigns" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/templates"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedCrmLayout initialPage="email-templates" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/followups"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedCrmLayout initialPage="follow-ups" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/export"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedCrmLayout initialPage="export" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedCrmLayout initialPage="settings" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedCrmLayout initialPage="profile" />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Fallback for any unmatched protected route */}
           <Route
             path="/*"
             element={
               <ProtectedRoute>
-                <AuthenticatedCrmLayout />
+                <AuthenticatedCrmLayout initialPage="dashboard" />
               </ProtectedRoute>
             }
           />

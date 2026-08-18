@@ -1,0 +1,20 @@
+{
+  "name": "prosqora-crm",
+  "version": "2.5.0",
+  "description": "Prosqora — Intelligent Lead Discovery & CRM",
+  "main": "server/server.js",
+  "scripts": {
+    "build": "cd client && npm install && npm run build && cd ../server && npm install",
+    "start": "cd server && node server.js",
+    "test": "node run_master_qa_audit.js"
+  },
+  "keywords": [
+    "prosqora",
+    "crm",
+    "lead-discovery",
+    "website-scanner",
+    "sales-intelligence"
+  ],
+  "author": "AM Automation Trading",
+  "license": "ISC"
+}

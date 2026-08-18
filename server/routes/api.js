@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const ExcelJS = require('exceljs');
 const { scanWebsite } = require('../services/scannerService');
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { verifyCsvQueue, verifyCsvBatchChunk, rescanLeadsBatchChunk } = require('../services/verificationService');
+const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
+const { logAuditEvent, getLeadActivity } = require('../services/auditService');
 const {
   runQuery,
   getRow,
@@ -15,6 +17,8 @@ const {
 // PROTECT ALL CRM ENDPOINTS WITH TENANT AUTHENTICATION
 router.use(authenticateToken);
 
+const getWorkspaceId = (req) => req.user.workspace_id || req.user.user_id;
+
 // 1. SCAN SINGLE WEBSITE ENDPOINT
 router.post('/scan', async (req, res) => {
   try {
@@ -25,12 +29,13 @@ router.post('/scan', async (req, res) => {
 
     const scanData = await scanWebsite(url.trim());
     const userId = req.user.user_id;
+    const workspaceId = getWorkspaceId(req);
 
-    // Check if this website is already in the user's CRM
+    // Check if this website is already in the workspace CRM
     const normUrl = normalizeUrl(scanData.website || url);
     const existingLead = await getRow(
-      `SELECT * FROM leads WHERE user_id = ? AND normalized_url = ?`,
-      [userId, normUrl]
+      `SELECT * FROM leads WHERE (workspace_id = ? OR (workspace_id = '' AND user_id = ?)) AND normalized_url = ?`,
+      [workspaceId, userId, normUrl]
     );
 
     if (existingLead) {
@@ -65,6 +70,7 @@ router.post('/leads/check-duplicate', async (req, res) => {
   try {
     const { website, company_name, phone } = req.body;
     const userId = req.user.user_id;
+    const workspaceId = getWorkspaceId(req);
     const normUrl = normalizeUrl(website);
     const normPhone = normalizePhone(phone);
 
@@ -72,15 +78,15 @@ router.post('/leads/check-duplicate', async (req, res) => {
 
     if (normUrl) {
       existingLead = await getRow(
-        `SELECT * FROM leads WHERE user_id = ? AND normalized_url = ?`,
-        [userId, normUrl]
+        `SELECT * FROM leads WHERE (workspace_id = ? OR (workspace_id = '' AND user_id = ?)) AND normalized_url = ?`,
+        [workspaceId, userId, normUrl]
       );
     }
 
     if (!existingLead && normPhone) {
       existingLead = await getRow(
-        `SELECT * FROM leads WHERE user_id = ? AND normalized_phone != '' AND normalized_phone = ?`,
-        [userId, normPhone]
+        `SELECT * FROM leads WHERE (workspace_id = ? OR (workspace_id = '' AND user_id = ?)) AND normalized_phone != '' AND normalized_phone = ?`,
+        [workspaceId, userId, normPhone]
       );
     }
 
@@ -108,6 +114,7 @@ router.post('/leads', async (req, res) => {
   try {
     const leadData = req.body;
     const userId = req.user.user_id;
+    const workspaceId = getWorkspaceId(req);
 
     if (!leadData.company_name || !leadData.website) {
       return res.status(400).json({ success: false, error: 'Company Name and Website are required.' });
@@ -117,8 +124,8 @@ router.post('/leads', async (req, res) => {
     const normPhone = normalizePhone(leadData.phone || leadData.normalized_phone);
 
     const existing = await getRow(
-      `SELECT * FROM leads WHERE user_id = ? AND (normalized_url = ? OR (normalized_phone != '' AND normalized_phone = ?))`,
-      [userId, normUrl, normPhone]
+      `SELECT * FROM leads WHERE (workspace_id = ? OR (workspace_id = '' AND user_id = ?)) AND (normalized_url = ? OR (normalized_phone != '' AND normalized_phone = ?))`,
+      [workspaceId, userId, normUrl, normPhone]
     );
 
     // If duplicate found and not explicitly performing update: return structured duplicate response without error
@@ -214,15 +221,18 @@ router.post('/leads', async (req, res) => {
     const lead_id = await generateLeadId();
 
     const sql = `INSERT INTO leads (
-      lead_id, user_id, company_name, website, normalized_url, category, categories, category_evidence, location, address, city, state, country,
+      lead_id, workspace_id, user_id, created_by, updated_by, company_name, website, normalized_url, category, categories, category_evidence, location, address, city, state, country,
       phone, normalized_phone, additional_phones, email, email_source, whatsapp, whatsapp_url, contact_person,
       products, services, industries, machines, applications, linkedin, facebook, instagram, youtube, twitter,
       automation_opportunity, website_status, http_status, final_url, checked_date, lead_status, last_contact,
       next_followup, followup_count, contact_method, notes, search_query, search_location, confidence_score, contact_evidence
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
     const params = [
       lead_id,
+      workspaceId,
+      userId,
+      userId,
       userId,
       leadData.company_name,
       leadData.website,
@@ -271,15 +281,15 @@ router.post('/leads', async (req, res) => {
     ];
 
     const result = await runQuery(sql, params);
-    const newLead = await getRow(`SELECT * FROM leads WHERE id = ? AND user_id = ?`, [result.lastID, userId]);
+    const newLead = await getRow(`SELECT * FROM leads WHERE id = ?`, [result.lastID]);
 
     res.json({ success: true, status: 'created', lead: newLead, message: 'Lead saved to CRM successfully' });
   } catch (err) {
     if (err.message && err.message.includes('UNIQUE constraint failed')) {
-      // Graceful fallback for race conditions or composite duplicates
       const userId = req.user.user_id;
+      const workspaceId = getWorkspaceId(req);
       const normUrl = normalizeUrl(req.body.website);
-      const existing = await getRow(`SELECT * FROM leads WHERE user_id = ? AND normalized_url = ?`, [userId, normUrl]);
+      const existing = await getRow(`SELECT * FROM leads WHERE (workspace_id = ? OR (workspace_id = '' AND user_id = ?)) AND normalized_url = ?`, [workspaceId, userId, normUrl]);
       return res.json({
         success: true,
         status: 'duplicate',
@@ -292,14 +302,15 @@ router.post('/leads', async (req, res) => {
   }
 });
 
-// 4. GET ALL LEADS ENDPOINT (TENANT ISOLATED)
+// 4. GET ALL LEADS ENDPOINT (WORKSPACE ISOLATED)
 router.get('/leads', async (req, res) => {
   try {
     const { status, search, location } = req.query;
     const userId = req.user.user_id;
+    const workspaceId = getWorkspaceId(req);
 
-    let sql = `SELECT * FROM leads WHERE user_id = ?`;
-    const params = [userId];
+    let sql = `SELECT * FROM leads WHERE (workspace_id = ? OR (workspace_id = '' AND user_id = ?))`;
+    const params = [workspaceId, userId];
 
     if (status && status !== 'All') {
       sql += ` AND lead_status = ?`;
@@ -325,17 +336,38 @@ router.get('/leads', async (req, res) => {
   }
 });
 
-// 5. UPDATE LEAD ENDPOINT (TENANT ISOLATED)
+// 5. UPDATE LEAD ENDPOINT (WORKSPACE SCOPED + AUDIT LOGGED)
 router.put('/leads/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const body = req.body;
     const userId = req.user.user_id;
+    const workspaceId = getWorkspaceId(req);
 
-    const existing = await getRow(`SELECT * FROM leads WHERE id = ? AND user_id = ?`, [id, userId]);
+    const existing = await getRow(
+      `SELECT * FROM leads WHERE id = ? AND (workspace_id = ? OR (workspace_id = '' AND user_id = ?))`,
+      [id, workspaceId, userId]
+    );
     if (!existing) {
       return res.status(404).json({ error: 'Lead not found or access denied.' });
     }
+
+    const fieldsToTrack = {
+      phone: 'Phone',
+      email: 'Email',
+      contact_person: 'Contact Person',
+      lead_status: 'Lead Status',
+      notes: 'Notes',
+      city: 'City',
+      state: 'State'
+    };
+
+    const diffs = [];
+    Object.keys(fieldsToTrack).forEach((key) => {
+      if (body[key] !== undefined && String(body[key]) !== String(existing[key] || '')) {
+        diffs.push(`${fieldsToTrack[key]}: "${existing[key] || ''}" → "${body[key]}"`);
+      }
+    });
 
     const lead_status = body.lead_status !== undefined ? body.lead_status : existing.lead_status;
     const last_contact = body.last_contact !== undefined ? body.last_contact : existing.last_contact;
@@ -352,26 +384,148 @@ router.put('/leads/:id', async (req, res) => {
       `UPDATE leads SET
         lead_status = ?, last_contact = ?, next_followup = ?, followup_count = ?,
         contact_method = ?, notes = ?, contact_person = ?, phone = ?, normalized_phone = ?, email = ?,
-        updated_at = CURRENT_TIMESTAMP
-       WHERE id = ? AND user_id = ?`,
-      [lead_status, last_contact, next_followup, followup_count, contact_method, notes, contact_person, phone, normPhone, email, id, userId]
+        updated_by = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND (workspace_id = ? OR (workspace_id = '' AND user_id = ?))`,
+      [lead_status, last_contact, next_followup, followup_count, contact_method, notes, contact_person, phone, normPhone, email, userId, id, workspaceId, userId]
     );
 
-    const updated = await getRow(`SELECT * FROM leads WHERE id = ? AND user_id = ?`, [id, userId]);
+    if (diffs.length > 0) {
+      await logAuditEvent({
+        userId: req.user.user_id,
+        userName: req.user.full_name,
+        userEmail: req.user.email,
+        userRole: req.user.role,
+        workspaceId: workspaceId,
+        action: 'Lead Updated',
+        targetType: 'Lead',
+        targetId: existing.lead_id || String(existing.id),
+        details: `Updated ${existing.company_name}: ${diffs.join('; ')}`,
+        changes: { old: existing, new: body }
+      });
+    }
+
+    const updated = await getRow(`SELECT * FROM leads WHERE id = ?`, [id]);
     res.json({ success: true, lead: updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 6. DELETE LEAD ENDPOINT (TENANT ISOLATED)
-router.delete('/leads/:id', async (req, res) => {
+// 5B. GET LEAD ACTIVITY AUDIT HISTORY ENDPOINT
+router.get('/leads/:id/activity', async (req, res) => {
+  try {
+    const leadId = req.params.id;
+    const workspaceId = getWorkspaceId(req);
+    const userId = req.user.user_id;
+
+    const lead = await getRow(
+      `SELECT id, lead_id, company_name FROM leads WHERE (workspace_id = ? OR (workspace_id = '' AND user_id = ?)) AND (id = ? OR lead_id = ?)`,
+      [workspaceId, userId, leadId, leadId]
+    );
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead not found or access denied.' });
+    }
+
+    const activity = await getLeadActivity(lead.lead_id || lead.id, workspaceId);
+    res.json({ success: true, activity });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 6. DELETE LEAD ENDPOINT (ADMIN ONLY - WORKSPACE SCOPED)
+router.delete('/leads/:id', requireRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.user_id;
+    const workspaceId = getWorkspaceId(req);
 
-    await runQuery(`DELETE FROM leads WHERE id = ? AND user_id = ?`, [id, userId]);
+    const existing = await getRow(
+      `SELECT company_name, lead_id FROM leads WHERE id = ? AND (workspace_id = ? OR (workspace_id = '' AND user_id = ?))`,
+      [id, workspaceId, userId]
+    );
+
+    await runQuery(`DELETE FROM leads WHERE id = ? AND (workspace_id = ? OR (workspace_id = '' AND user_id = ?))`, [id, workspaceId, userId]);
+
+    if (existing) {
+      await logAuditEvent({
+        userId: req.user.user_id,
+        userName: req.user.full_name,
+        userEmail: req.user.email,
+        userRole: req.user.role,
+        workspaceId: workspaceId,
+        action: 'Lead Deleted',
+        targetType: 'Lead',
+        targetId: existing.lead_id || String(id),
+        details: `Deleted lead: ${existing.company_name}`
+      });
+    }
+
     res.json({ success: true, message: 'Lead deleted successfully' });
+
+    if (existing) {
+      await logAuditEvent({
+        userId: req.user.user_id,
+        userName: req.user.full_name,
+        userEmail: req.user.email,
+        userRole: req.user.role,
+        workspaceId: userId,
+        action: 'Lead Deleted',
+        targetType: 'Lead',
+        targetId: existing.lead_id || String(id),
+        details: `Deleted lead: ${existing.company_name}`
+      });
+    }
+
+    res.json({ success: true, message: 'Lead deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 6B. BULK DELETE LEADS ENDPOINT (ADMIN ONLY)
+router.post('/leads/bulk-delete', requireRole('admin'), async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const workspaceId = getWorkspaceId(req);
+    const leadIds = req.body.leadIds || req.body.ids;
+
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({ error: 'Array of lead IDs is required.' });
+    }
+
+    const placeholders = leadIds.map(() => '?').join(',');
+    const validLeads = await getAll(
+      `SELECT id, company_name FROM leads WHERE (workspace_id = ? OR (workspace_id = '' AND user_id = ?)) AND id IN (${placeholders})`,
+      [workspaceId, userId, ...leadIds]
+    );
+    const validIds = validLeads.map((l) => l.id);
+
+    if (validIds.length > 0) {
+      const validPlaceholders = validIds.map(() => '?').join(',');
+      await runQuery(
+        `DELETE FROM leads WHERE (workspace_id = ? OR (workspace_id = '' AND user_id = ?)) AND id IN (${validPlaceholders})`,
+        [workspaceId, userId, ...validIds]
+      );
+
+      await logAuditEvent({
+        userId: req.user.user_id,
+        userName: req.user.full_name,
+        userEmail: req.user.email,
+        userRole: req.user.role,
+        workspaceId: workspaceId,
+        action: 'Bulk Lead Deleted',
+        targetType: 'Lead',
+        targetId: `${validIds.length} leads`,
+        details: `Bulk deleted ${validIds.length} leads`
+      });
+    }
+
+    res.json({
+      success: true,
+      deletedCount: validIds.length,
+      message: `Successfully deleted ${validIds.length} leads.`
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -483,10 +637,24 @@ router.get('/dashboard/stats', async (req, res) => {
   }
 });
 
-// 10. EXPORT CSV & EXCEL ENDPOINTS (TENANT ISOLATED)
-router.get('/export/csv', async (req, res) => {
+// 10. EXPORT CSV & EXCEL ENDPOINTS (TENANT ISOLATED — ADMIN ONLY)
+router.get('/export/csv', requireRole('admin'), async (req, res) => {
   try {
     const userId = req.user.user_id;
+
+    // Audit Log Export Event
+    await logAuditEvent({
+      userId: req.user.user_id,
+      userName: req.user.full_name,
+      userEmail: req.user.email,
+      userRole: req.user.role,
+      workspaceId: userId,
+      action: 'Export Performed',
+      targetType: 'Export',
+      targetId: 'CSV',
+      details: `Exported CRM leads database to CSV format`
+    });
+
     const ids = req.query.ids;
     let leads = [];
 
@@ -519,16 +687,29 @@ router.get('/export/csv', async (req, res) => {
     });
 
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=autolead_crm_${Date.now()}.csv`);
+    res.setHeader('Content-Disposition', `attachment; filename=prosqora_crm_${Date.now()}.csv`);
     res.send(csvContent);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/export/excel', async (req, res) => {
+router.get('/export/excel', requireRole('admin'), async (req, res) => {
   try {
     const userId = req.user.user_id;
+
+    // Audit Log Export Event
+    await logAuditEvent({
+      userId: req.user.user_id,
+      userName: req.user.full_name,
+      userEmail: req.user.email,
+      userRole: req.user.role,
+      workspaceId: userId,
+      action: 'Export Performed',
+      targetType: 'Export',
+      targetId: 'Excel',
+      details: `Exported Prosqora CRM leads database to Excel format`
+    });
     const ids = req.query.ids;
     let leads = [];
 
@@ -541,7 +722,7 @@ router.get('/export/excel', async (req, res) => {
     }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('AutoLead CRM');
+    const worksheet = workbook.addWorksheet('Prosqora CRM');
 
     worksheet.columns = [
       { header: 'Lead ID', key: 'lead_id', width: 15 },
@@ -567,7 +748,7 @@ router.get('/export/excel', async (req, res) => {
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
-    res.setHeader('Content-Disposition', `attachment; filename=autolead_crm_${Date.now()}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=prosqora_crm_${Date.now()}.xlsx`);
 
     await workbook.xlsx.write(res);
     res.end();
@@ -605,6 +786,593 @@ router.post('/settings', async (req, res) => {
     );
 
     res.json({ success: true, key, value });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 12. CSV BULK IMPORT ENDPOINT (WITH BATCH UNIFIED DUPLICATE PREVENTION & PERFORMANCE)
+router.post('/leads/bulk-import', async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const { leads, fileName, allowMissingWebsite } = req.body;
+
+    if (!Array.isArray(leads) || leads.length === 0) {
+      return res.status(400).json({ error: 'Array of leads is required' });
+    }
+
+    let totalRows = leads.length;
+    let importedCount = 0;
+    let existingDuplicatesCount = 0;
+    let csvDuplicatesCount = 0;
+    let invalidWebsitesCount = 0;
+    let missingWebsitesCount = 0;
+
+    const seenCsvNormUrls = new Set();
+    const leadsToImport = [];
+
+    // Phase 1: Local normalization & CSV-level deduplication
+    for (const item of leads) {
+      const rawWeb = (item.website || '').trim();
+
+      if (!rawWeb) {
+        if (allowMissingWebsite) {
+          leadsToImport.push({
+            ...item,
+            website: '',
+            normalized_url: '',
+            _status: 'missing_allowed'
+          });
+        } else {
+          missingWebsitesCount++;
+          continue;
+        }
+      } else {
+        const normUrl = normalizeUrl(rawWeb);
+        if (!normUrl || !normUrl.includes('.') || normUrl.length < 3) {
+          invalidWebsitesCount++;
+          continue;
+        }
+
+        if (seenCsvNormUrls.has(normUrl)) {
+          csvDuplicatesCount++;
+          continue;
+        }
+
+        seenCsvNormUrls.add(normUrl);
+        leadsToImport.push({
+          ...item,
+          website: rawWeb,
+          normalized_url: normUrl,
+          _status: 'valid'
+        });
+      }
+    }
+
+    // Phase 2: Batch check existing normalized URLs in database (No N+1 queries!)
+    const normUrlsToCheck = leadsToImport
+      .map((l) => l.normalized_url)
+      .filter((u) => u && u.length > 0);
+
+    const existingNormUrlsSet = new Set();
+
+    if (normUrlsToCheck.length > 0) {
+      const chunkSize = 500;
+      for (let i = 0; i < normUrlsToCheck.length; i += chunkSize) {
+        const chunk = normUrlsToCheck.slice(i, i + chunkSize);
+        const placeholders = chunk.map(() => '?').join(',');
+        const existingRows = await getAll(
+          `SELECT normalized_url FROM leads WHERE user_id = ? AND normalized_url IN (${placeholders})`,
+          [userId, ...chunk]
+        );
+        existingRows.forEach((r) => existingNormUrlsSet.add(r.normalized_url));
+      }
+    }
+
+    // Phase 3: Bulk insert non-duplicate unique leads
+    for (const leadData of leadsToImport) {
+      if (leadData.normalized_url && existingNormUrlsSet.has(leadData.normalized_url)) {
+        existingDuplicatesCount++;
+        continue;
+      }
+
+      try {
+        const lead_id = await generateLeadId();
+        const normPhone = normalizePhone(leadData.phone || '');
+
+        const sql = `INSERT INTO leads (
+          lead_id, user_id, company_name, website, normalized_url, category, location, address, city, state, country,
+          phone, normalized_phone, email, contact_person, products, services, industries, notes, search_query, confidence_score
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CSV Import', 'HIGH')`;
+
+        const params = [
+          lead_id,
+          userId,
+          leadData.company_name || 'Imported Company',
+          leadData.website || '',
+          leadData.normalized_url || '',
+          leadData.category || '',
+          leadData.location || '',
+          leadData.address || '',
+          leadData.city || 'Unknown',
+          leadData.state || 'Unknown',
+          leadData.country || 'India',
+          leadData.phone || '',
+          normPhone,
+          leadData.email || '',
+          leadData.contact_person || '',
+          leadData.products || '',
+          leadData.services || '',
+          leadData.industries || '',
+          leadData.notes || ''
+        ];
+
+        const result = await runQuery(sql, params);
+        importedCount++;
+        if (leadData.normalized_url) {
+          existingNormUrlsSet.add(leadData.normalized_url);
+        }
+      } catch (err) {
+        if (err.message && err.message.includes('UNIQUE constraint failed')) {
+          existingDuplicatesCount++;
+        }
+      }
+    }
+
+    // Save Import History Log
+    try {
+      await runQuery(
+        `INSERT INTO import_history (user_id, file_name, total_rows, imported_count, existing_duplicates_count, csv_duplicates_count, invalid_websites_count, missing_websites_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          fileName || 'imported_leads.csv',
+          totalRows,
+          importedCount,
+          existingDuplicatesCount,
+          csvDuplicatesCount,
+          invalidWebsitesCount,
+          missingWebsitesCount
+        ]
+      );
+    } catch (e) {}
+
+    res.json({
+      success: true,
+      totalRows,
+      importedCount,
+      existingDuplicatesCount,
+      csvDuplicatesCount,
+      invalidWebsitesCount,
+      missingWebsitesCount
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 13. FIND DUPLICATES IN CRM ENDPOINT (GROUPED BY NORMALIZED WEBSITE)
+router.get('/leads/duplicates', async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+
+    const duplicateRows = await getAll(
+      `SELECT normalized_url, COUNT(*) as cnt FROM leads WHERE user_id = ? AND normalized_url != '' GROUP BY normalized_url HAVING COUNT(*) > 1`,
+      [userId]
+    );
+
+    if (duplicateRows.length === 0) {
+      return res.json({ success: true, count: 0, totalDuplicateLeads: 0, duplicateGroups: [] });
+    }
+
+    const duplicateGroups = [];
+
+    for (const dup of duplicateRows) {
+      const leads = await getAll(
+        `SELECT * FROM leads WHERE user_id = ? AND normalized_url = ? ORDER BY id ASC`,
+        [userId, dup.normalized_url]
+      );
+
+      // Calculate score for each lead to recommend best one
+      let bestLead = null;
+      let highestScore = -1;
+
+      leads.forEach((l) => {
+        let score = 0;
+        if (l.company_name && l.company_name !== 'Imported Company') score += 15;
+        if (l.website) score += 15;
+        if (l.email) score += 20;
+        if (l.phone) score += 20;
+        if (l.contact_person) score += 15;
+        if (l.address || l.city) score += 10;
+        if (l.products || l.services || l.notes) score += 5;
+
+        // Give slight priority to older records if information completeness is equal
+        score += (10000000000000 - new Date(l.created_at || Date.now()).getTime()) / 1000000000000;
+
+        if (score > highestScore) {
+          highestScore = score;
+          bestLead = l;
+        }
+      });
+
+      duplicateGroups.push({
+        normalizedUrl: dup.normalized_url,
+        count: dup.cnt,
+        recommendedId: bestLead ? bestLead.id : leads[0].id,
+        leads
+      });
+    }
+
+    res.json({
+      success: true,
+      count: duplicateGroups.length,
+      totalDuplicateLeads: duplicateGroups.reduce((acc, g) => acc + g.count, 0),
+      duplicateGroups
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 14. MERGE DUPLICATE LEADS ENDPOINT
+router.post('/leads/merge', async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const { primaryId, duplicateIds } = req.body;
+
+    if (!primaryId || !Array.isArray(duplicateIds) || duplicateIds.length === 0) {
+      return res.status(400).json({ error: 'primaryId and array of duplicateIds are required' });
+    }
+
+    const primaryLead = await getRow(`SELECT * FROM leads WHERE id = ? AND user_id = ?`, [primaryId, userId]);
+    if (!primaryLead) return res.status(404).json({ error: 'Primary lead not found' });
+
+    const placeholders = duplicateIds.map(() => '?').join(',');
+    const duplicateLeads = await getAll(
+      `SELECT * FROM leads WHERE user_id = ? AND id IN (${placeholders})`,
+      [userId, ...duplicateIds]
+    );
+
+    // Merge non-empty values into primary lead
+    const merged = { ...primaryLead };
+    const fieldsToMerge = [
+      'company_name', 'website', 'email', 'phone', 'contact_person', 'city', 'state', 'country',
+      'address', 'location', 'category', 'categories', 'products', 'services', 'industries',
+      'machines', 'applications', 'linkedin', 'facebook', 'instagram', 'youtube', 'twitter',
+      'notes', 'automation_opportunity', 'whatsapp'
+    ];
+
+    duplicateLeads.forEach((dup) => {
+      fieldsToMerge.forEach((f) => {
+        if ((!merged[f] || merged[f] === 'Unknown' || merged[f] === '[]') && dup[f] && dup[f] !== 'Unknown' && dup[f] !== '[]') {
+          merged[f] = dup[f];
+        } else if (f === 'notes' && dup.notes && dup.notes !== merged.notes) {
+          merged.notes = (merged.notes + '\n' + dup.notes).trim();
+        }
+      });
+    });
+
+    await runQuery(
+      `UPDATE leads SET
+        company_name = ?, website = ?, email = ?, phone = ?, contact_person = ?, city = ?, state = ?, country = ?,
+        address = ?, location = ?, category = ?, categories = ?, products = ?, services = ?, industries = ?,
+        machines = ?, applications = ?, linkedin = ?, facebook = ?, instagram = ?, youtube = ?, twitter = ?,
+        notes = ?, automation_opportunity = ?, whatsapp = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ?`,
+      [
+        merged.company_name, merged.website, merged.email, merged.phone, merged.contact_person, merged.city, merged.state, merged.country,
+        merged.address, merged.location, merged.category, merged.categories, merged.products, merged.services, merged.industries,
+        merged.machines, merged.applications, merged.linkedin, merged.facebook, merged.instagram, merged.youtube, merged.twitter,
+        merged.notes, merged.automation_opportunity, merged.whatsapp, primaryId, userId
+      ]
+    );
+
+    // Delete merged duplicate rows
+    await runQuery(`DELETE FROM leads WHERE user_id = ? AND id IN (${placeholders})`, [userId, ...duplicateIds]);
+
+    const updatedPrimary = await getRow(`SELECT * FROM leads WHERE id = ? AND user_id = ?`, [primaryId, userId]);
+    res.json({ success: true, lead: updatedPrimary });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 15. BULK CLEAN ALL DUPLICATES ENDPOINT (KEEP RECOMMENDED)
+router.post('/leads/bulk-clean-duplicates', async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+
+    const duplicateRows = await getAll(
+      `SELECT normalized_url, COUNT(*) as cnt FROM leads WHERE user_id = ? AND normalized_url != '' GROUP BY normalized_url HAVING COUNT(*) > 1`,
+      [userId]
+    );
+
+    let cleanedGroupsCount = 0;
+    let removedLeadsCount = 0;
+
+    for (const dup of duplicateRows) {
+      const leads = await getAll(
+        `SELECT * FROM leads WHERE user_id = ? AND normalized_url = ? ORDER BY id ASC`,
+        [userId, dup.normalized_url]
+      );
+
+      if (leads.length < 2) continue;
+
+      let primary = leads[0];
+      let highestScore = -1;
+
+      leads.forEach((l) => {
+        let score = 0;
+        if (l.company_name && l.company_name !== 'Imported Company') score += 15;
+        if (l.website) score += 15;
+        if (l.email) score += 20;
+        if (l.phone) score += 20;
+        if (l.contact_person) score += 15;
+        if (l.address || l.city) score += 10;
+        if (l.products || l.services || l.notes) score += 5;
+        score += (10000000000000 - new Date(l.created_at || Date.now()).getTime()) / 1000000000000;
+
+        if (score > highestScore) {
+          highestScore = score;
+          primary = l;
+        }
+      });
+
+      const duplicates = leads.filter((l) => l.id !== primary.id);
+      const duplicateIds = duplicates.map((l) => l.id);
+
+      const merged = { ...primary };
+      const fieldsToMerge = [
+        'company_name', 'website', 'email', 'phone', 'contact_person', 'city', 'state', 'country',
+        'address', 'location', 'category', 'categories', 'products', 'services', 'industries',
+        'machines', 'applications', 'linkedin', 'facebook', 'instagram', 'youtube', 'twitter',
+        'notes', 'automation_opportunity', 'whatsapp'
+      ];
+
+      duplicates.forEach((d) => {
+        fieldsToMerge.forEach((f) => {
+          if ((!merged[f] || merged[f] === 'Unknown' || merged[f] === '[]') && d[f] && d[f] !== 'Unknown' && d[f] !== '[]') {
+            merged[f] = d[f];
+          } else if (f === 'notes' && d.notes && d.notes !== merged.notes) {
+            merged.notes = (merged.notes + '\n' + d.notes).trim();
+          }
+        });
+      });
+
+      await runQuery(
+        `UPDATE leads SET
+          company_name = ?, website = ?, email = ?, phone = ?, contact_person = ?, city = ?, state = ?, country = ?,
+          address = ?, location = ?, category = ?, categories = ?, products = ?, services = ?, industries = ?,
+          machines = ?, applications = ?, linkedin = ?, facebook = ?, instagram = ?, youtube = ?, twitter = ?,
+          notes = ?, automation_opportunity = ?, whatsapp = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND user_id = ?`,
+        [
+          merged.company_name, merged.website, merged.email, merged.phone, merged.contact_person, merged.city, merged.state, merged.country,
+          merged.address, merged.location, merged.category, merged.categories, merged.products, merged.services, merged.industries,
+          merged.machines, merged.applications, merged.linkedin, merged.facebook, merged.instagram, merged.youtube, merged.twitter,
+          merged.notes, merged.automation_opportunity, merged.whatsapp, primary.id, userId
+        ]
+      );
+
+      const placeholders = duplicateIds.map(() => '?').join(',');
+      await runQuery(`DELETE FROM leads WHERE user_id = ? AND id IN (${placeholders})`, [userId, ...duplicateIds]);
+
+      cleanedGroupsCount++;
+      removedLeadsCount += duplicateIds.length;
+    }
+
+    res.json({ success: true, cleanedGroupsCount, removedLeadsCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 16. IMPORT HISTORY ENDPOINT
+router.get('/import/history', async (req, res) => {
+  try {
+    const history = await getAll(`SELECT * FROM import_history WHERE user_id = ? ORDER BY id DESC`, [req.user.user_id]);
+    res.json({ success: true, history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 17. VERIFY CSV QUEUE ENDPOINT (WEBSITE SCANNING & COMPANY DATA EXTRACTION PIPELINE)
+router.post('/leads/verify-queue', async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const { rows, allowMissingWebsite, concurrency } = req.body;
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'Rows array required' });
+    }
+
+    const verificationResult = await verifyCsvQueue({
+      userId,
+      rows,
+      allowMissingWebsite: !!allowMissingWebsite,
+      concurrency: concurrency || 5
+    });
+
+    res.json(verificationResult);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 17B. VERIFY CSV BATCH CHUNK ENDPOINT (STREAMING REAL-TIME VERIFICATION PROGRESS)
+router.post('/leads/verify-chunk', async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const { rowsChunk, allowMissingWebsite, existingDomains, concurrency } = req.body;
+
+    if (!Array.isArray(rowsChunk) || rowsChunk.length === 0) {
+      return res.status(400).json({ error: 'rowsChunk array required' });
+    }
+
+    const existingDomainsSet = new Set(Array.isArray(existingDomains) ? existingDomains : []);
+
+    const chunkResult = await verifyCsvBatchChunk({
+      userId,
+      rowsChunk,
+      allowMissingWebsite: !!allowMissingWebsite,
+      existingDomainsSet,
+      concurrency: concurrency || 3
+    });
+
+    res.json(chunkResult);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 17C. RESCAN EXISTING LEADS BATCH CHUNK ENDPOINT (REFRESH WEBSITES FOR EXISTING LEADS ONLY)
+router.post('/leads/rescan-chunk', async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const { leadIdsChunk, concurrency } = req.body;
+
+    if (!Array.isArray(leadIdsChunk) || leadIdsChunk.length === 0) {
+      return res.status(400).json({ error: 'leadIdsChunk array required' });
+    }
+
+    const placeholders = leadIdsChunk.map(() => '?').join(',');
+    const leadsChunk = await getAll(
+      `SELECT * FROM leads WHERE user_id = ? AND id IN (${placeholders})`,
+      [userId, ...leadIdsChunk]
+    );
+
+    const chunkResult = await rescanLeadsBatchChunk({
+      userId,
+      leadsChunk,
+      concurrency: concurrency || 3
+    });
+
+    res.json(chunkResult);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 18. IMPORT VERIFIED LEADS ENDPOINT (FINAL SERVER-SIDE DUPLICATE CHECK & CRM INSERTION)
+router.post('/leads/import-verified', async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const { verifiedLeads, fileName } = req.body;
+
+    if (!Array.isArray(verifiedLeads) || verifiedLeads.length === 0) {
+      return res.status(400).json({ error: 'Array of verified lead candidates required' });
+    }
+
+    let insertedCount = 0;
+    let duplicateAlreadyImportedCount = 0;
+
+    for (const leadData of verifiedLeads) {
+      const normUrl = normalizeUrl(leadData.website || leadData.normalized_url || '');
+
+      if (normUrl) {
+        const existing = await getRow(
+          `SELECT id FROM leads WHERE user_id = ? AND normalized_url = ?`,
+          [userId, normUrl]
+        );
+
+        if (existing) {
+          duplicateAlreadyImportedCount++;
+          continue;
+        }
+      }
+
+      try {
+        const lead_id = await generateLeadId();
+        const normPhone = normalizePhone(leadData.phone || '');
+
+        // Strict Backend Single-Source-of-Truth Status Validation
+        const rawWebStatus = leadData.website_status || '🟢 Accessible';
+        const isNotAccessible =
+          rawWebStatus.includes('Not Accessible') ||
+          rawWebStatus.includes('Unreachable') ||
+          rawWebStatus.includes('404') ||
+          rawWebStatus.includes('500') ||
+          rawWebStatus.includes('Timeout');
+
+        const website_status = isNotAccessible
+          ? '🔴 Not Accessible'
+          : rawWebStatus.includes('Redirected')
+          ? '🟡 Redirected'
+          : '🟢 Accessible';
+
+        const verification_status = isNotAccessible ? 'Needs Review' : leadData.verification_status || 'Verified';
+        const verified_at = verification_status === 'Verified' ? new Date().toISOString() : null;
+        const last_website_check_at = new Date().toISOString();
+
+        const sql = `INSERT INTO leads (
+          lead_id, user_id, company_name, website, normalized_url, category, categories, location, address, city, state, country,
+          phone, normalized_phone, email, contact_person, products, services, notes, search_query, confidence_score,
+          website_status, verification_status, verified_at, last_website_check_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CSV Verified Import', ?, ?, ?, ?, ?)`;
+
+        const params = [
+          lead_id,
+          userId,
+          leadData.company_name || 'Imported Company',
+          leadData.website || '',
+          normUrl || '',
+          leadData.category || '',
+          leadData.categories || '[]',
+          leadData.location || '',
+          leadData.address || '',
+          leadData.city || 'Unknown',
+          leadData.state || 'Unknown',
+          leadData.country || 'India',
+          leadData.phone || '',
+          normPhone,
+          leadData.email || '',
+          leadData.contact_person || '',
+          leadData.products || '',
+          leadData.services || '',
+          leadData.notes || '',
+          leadData.confidence_score || 'HIGH',
+          website_status,
+          verification_status,
+          verified_at,
+          last_website_check_at
+        ];
+
+        const result = await runQuery(sql, params);
+        insertedCount++;
+
+        // Add contact record if contact person or email exists
+        if (leadData.contact_person || leadData.email) {
+          try {
+            await runQuery(
+              `INSERT INTO contacts (lead_id, user_id, name, email, phone, designation, department) VALUES (?, ?, ?, ?, ?, 'Contact Person', 'General')`,
+              [lead_id, userId, leadData.contact_person || leadData.company_name, leadData.email || '', leadData.phone || '']
+            );
+          } catch (e) {}
+        }
+      } catch (err) {
+        if (err.message && err.message.includes('UNIQUE constraint failed')) {
+          duplicateAlreadyImportedCount++;
+        }
+      }
+    }
+
+    // Save Import History Log
+    try {
+      await runQuery(
+        `INSERT INTO import_history (user_id, file_name, total_rows, imported_count, existing_duplicates_count, csv_duplicates_count, invalid_websites_count, missing_websites_count)
+         VALUES (?, ?, ?, ?, ?, 0, 0, 0)`,
+        [userId, fileName || 'verified_import.csv', verifiedLeads.length, insertedCount, duplicateAlreadyImportedCount]
+      );
+    } catch (e) {}
+
+    res.json({
+      success: true,
+      totalSubmitted: verifiedLeads.length,
+      insertedCount,
+      duplicateAlreadyImportedCount
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import CsvImportModal from '../components/CsvImportModal';
 import {
   SearchCode,
   Globe,
@@ -18,7 +19,8 @@ import {
   ChevronUp,
   BookmarkCheck,
   RefreshCw,
-  FolderOpen
+  FolderOpen,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export default function ManualScanPage({ onSaveLead, setSelectedLead }) {
@@ -28,6 +30,7 @@ export default function ManualScanPage({ onSaveLead, setSelectedLead }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [showEvidenceDebug, setShowEvidenceDebug] = useState(true);
   const [savingState, setSavingState] = useState(false);
+  const [showCsvModal, setShowCsvModal] = useState(false);
 
   const handleScanSubmit = async (e) => {
     if (e) e.preventDefault();
@@ -94,21 +97,21 @@ export default function ManualScanPage({ onSaveLead, setSelectedLead }) {
       </div>
 
       {/* Input Form */}
-      <form onSubmit={handleScanSubmit} className="industrial-card p-6">
-        <div className="flex items-center gap-3">
+      <div className="industrial-card p-6 space-y-4">
+        <form onSubmit={handleScanSubmit} className="flex flex-col sm:flex-row items-center gap-3">
           <input
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="Enter website"
-            className="industrial-input flex-1 text-xs font-mono"
+            className="industrial-input flex-1 w-full text-xs font-mono"
             required
           />
 
           <button
             type="submit"
             disabled={scanning}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-brand-orange hover:bg-orange-600 text-xs font-bold text-white shadow-lg shadow-brand-orange/20 transition-all disabled:opacity-50 shrink-0"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-brand-orange hover:bg-orange-600 text-xs font-bold text-white shadow-lg shadow-brand-orange/20 transition-all disabled:opacity-50 shrink-0"
           >
             {scanning ? (
               <>
@@ -122,8 +125,20 @@ export default function ManualScanPage({ onSaveLead, setSelectedLead }) {
               </>
             )}
           </button>
+        </form>
+
+        <div className="pt-3 border-t border-industrial-800 flex items-center justify-between">
+          <span className="text-xs text-industrial-400">Have a list of leads in Excel or CSV format?</span>
+          <button
+            type="button"
+            onClick={() => setShowCsvModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-industrial-800 hover:bg-industrial-700 text-white font-bold text-xs border border-industrial-700 transition-colors"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-brand-orange" />
+            <span>Import CSV</span>
+          </button>
         </div>
-      </form>
+      </div>
 
       {/* Error Notice */}
       {errorMessage && (
@@ -355,6 +370,8 @@ export default function ManualScanPage({ onSaveLead, setSelectedLead }) {
 
         </div>
       )}
+
+      {showCsvModal && <CsvImportModal onClose={() => setShowCsvModal(false)} />}
 
     </div>
   );

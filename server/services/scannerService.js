@@ -703,7 +703,7 @@ async function scanWebsite(targetUrl) {
       try {
         const subRes = await axios.get(pageUrl, {
           timeout: 7000,
-          headers: { 'User-Agent': 'Mozilla/5.0 AutoLead Inspector/2.0' }
+          headers: { 'User-Agent': 'Mozilla/5.0 Prosqora Inspector/2.0' }
         });
         if (subRes.status === 200) {
           currentHtml = subRes.data;

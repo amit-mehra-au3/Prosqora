@@ -15,6 +15,7 @@ server/node_modules/
 *.sqlite
 *.sqlite3
 server/*.db
+server/*backup*.json
 
 # Build Outputs
 dist/

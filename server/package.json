@@ -18,7 +18,9 @@
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-rate-limit": "^8.6.2",
+    "googleapis": "^174.0.1",
     "jsonwebtoken": "^9.0.3",
+    "pg": "^8.13.3",
     "sqlite3": "^5.1.7"
   }
 }
