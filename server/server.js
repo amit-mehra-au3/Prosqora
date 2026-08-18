@@ -3,6 +3,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 require('dotenv').config();
 
 const { initDb } = require('./db');
@@ -62,13 +63,39 @@ const possibleDistPaths = [
   path.resolve(__dirname, 'dist')
 ];
 
-let clientDistPath = possibleDistPaths.find(p => fs.existsSync(p));
+let clientDistPath = possibleDistPaths.find(p => fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html')));
+
+console.log('================================================');
+console.log('[PROSQORA FRONTEND DIAGNOSTIC]');
+console.log('Current __dirname:', __dirname);
+console.log('Current process.cwd():', process.cwd());
+possibleDistPaths.forEach((p, i) => {
+  const dirExists = fs.existsSync(p);
+  const indexExists = dirExists ? fs.existsSync(path.join(p, 'index.html')) : false;
+  console.log(`- Path [${i}] ${p} => Dir Exists: ${dirExists}, index.html Exists: ${indexExists}`);
+});
+
+// Auto-generate frontend build if client/dist is missing on startup
+if (!clientDistPath) {
+  console.log('[STATIC SERVING] client/dist index.html not detected. Executing automated frontend build...');
+  try {
+    const rootDir = path.resolve(__dirname, '..');
+    const clientDir = path.resolve(rootDir, 'client');
+    if (fs.existsSync(clientDir)) {
+      execSync('npm install --include=dev && npm run build', { cwd: clientDir, stdio: 'inherit' });
+      clientDistPath = possibleDistPaths.find(p => fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html')));
+    }
+  } catch (e) {
+    console.error('[STATIC SERVING ERROR] Automated frontend build failed:', e.message);
+  }
+}
+
+console.log('Final Selected clientDistPath:', clientDistPath || 'NONE (MISSING)');
+console.log('================================================');
 
 if (clientDistPath) {
   console.log(`[STATIC SERVING] Serving compiled Prosqora React frontend from: ${clientDistPath}`);
   app.use(express.static(clientDistPath));
-} else {
-  console.warn('[STATIC SERVING WARNING] client/dist directory not found at startup. Will re-check on request.');
 }
 
 // SPA Catch-All Route: Serves index.html for client-side routing (React Router)
@@ -78,7 +105,7 @@ app.get('*', (req, res, next) => {
     return next();
   }
 
-  const activeDistPath = clientDistPath || possibleDistPaths.find(p => fs.existsSync(p));
+  const activeDistPath = clientDistPath || possibleDistPaths.find(p => fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html')));
   if (activeDistPath) {
     const indexPath = path.join(activeDistPath, 'index.html');
     if (fs.existsSync(indexPath)) {
