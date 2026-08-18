@@ -54,17 +54,40 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Serve compiled React SPA production build in production or when client/dist exists
-const clientDistPath = path.join(__dirname, '../client/dist');
-if (fs.existsSync(clientDistPath)) {
+// Locate compiled React SPA production build across possible directory structures
+const possibleDistPaths = [
+  path.resolve(__dirname, '../client/dist'),
+  path.resolve(process.cwd(), 'client/dist'),
+  path.resolve(process.cwd(), 'dist'),
+  path.resolve(__dirname, 'dist')
+];
+
+let clientDistPath = possibleDistPaths.find(p => fs.existsSync(p));
+
+if (clientDistPath) {
+  console.log(`[STATIC SERVING] Serving compiled Prosqora React frontend from: ${clientDistPath}`);
   app.use(express.static(clientDistPath));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
-      return next();
-    }
-    res.sendFile(path.join(clientDistPath, 'index.html'));
-  });
+} else {
+  console.warn('[STATIC SERVING WARNING] client/dist directory not found at startup. Will re-check on request.');
 }
+
+// SPA Catch-All Route: Serves index.html for client-side routing (React Router)
+app.get('*', (req, res, next) => {
+  // Do NOT intercept API endpoints or health check
+  if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+    return next();
+  }
+
+  const activeDistPath = clientDistPath || possibleDistPaths.find(p => fs.existsSync(p));
+  if (activeDistPath) {
+    const indexPath = path.join(activeDistPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
+  }
+
+  res.status(404).send('Prosqora Frontend Assets Not Found. Please run "npm run build" to generate client/dist.');
+});
 
 // Initialize database and start server
 initDb()
