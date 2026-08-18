@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/authMiddleware');
 const { getRow, getAll, runQuery } = require('../db');
-const { getAuthUrl, getTokensFromCode, validateOAuthCredentials, sendGmailMessage } = require('../services/gmailService');
+const { getAuthUrl, getTokensFromCode, validateOAuthCredentials, sendGmailMessage, getDynamicRedirectUri } = require('../services/gmailService');
 const {
   substituteVariables,
   auditCampaignRecipients,
@@ -18,7 +18,8 @@ router.get('/gmail/oauth/callback', async (req, res) => {
     if (!code) return res.status(400).send('Authorization code missing');
 
     const userId = state || 'demo_user';
-    const { email, tokens } = await getTokensFromCode(code);
+    const computedRedirectUri = getDynamicRedirectUri(req);
+    const { email, tokens } = await getTokensFromCode(code, req, computedRedirectUri);
 
     const targetEmail = 'amautomationtrading@gmail.com';
 

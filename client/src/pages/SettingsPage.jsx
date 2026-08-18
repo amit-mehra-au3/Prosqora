@@ -579,19 +579,35 @@ export default function SettingsPage({ isDemoMode, setIsDemoMode }) {
 
                 {/* Step 4: Authorized Redirect URI Display */}
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-white block">
-                    Step 4 — Authorized Redirect URI (Copy to Google Console)
+                  <label className="text-xs font-bold text-white block flex items-center justify-between">
+                    <span>Step 4 — Authorized Redirect URI (Copy to Google Console)</span>
+                    <span className="text-[10px] text-emerald-400 font-mono">GOOGLE_REDIRECT_URI</span>
                   </label>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
                       readOnly
-                      value={setupRedirectUri || `${window.location.origin}/api/gmail/oauth/callback`}
+                      value={
+                        (setupRedirectUri && !setupRedirectUri.includes('localhost'))
+                          ? setupRedirectUri
+                          : (window.location.hostname.includes('onrender.com') || window.location.protocol === 'https:')
+                            ? `${window.location.origin}/api/gmail/oauth/callback`
+                            : (setupRedirectUri || `${window.location.origin}/api/gmail/oauth/callback`)
+                      }
                       className="industrial-input w-full text-xs font-mono text-emerald-400 bg-industrial-950 select-all"
                     />
                     <button
                       type="button"
-                      onClick={handleCopyRedirectUri}
+                      onClick={() => {
+                        const targetUri = (setupRedirectUri && !setupRedirectUri.includes('localhost'))
+                          ? setupRedirectUri
+                          : (window.location.hostname.includes('onrender.com') || window.location.protocol === 'https:')
+                            ? `${window.location.origin}/api/gmail/oauth/callback`
+                            : (setupRedirectUri || `${window.location.origin}/api/gmail/oauth/callback`);
+                        navigator.clipboard.writeText(targetUri);
+                        setCopiedUri(true);
+                        setTimeout(() => setCopiedUri(false), 2500);
+                      }}
                       className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-white font-bold text-xs border border-industrial-700 shrink-0 transition-colors"
                     >
                       {copiedUri ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-industrial-400" />}
@@ -599,7 +615,7 @@ export default function SettingsPage({ isDemoMode, setIsDemoMode }) {
                     </button>
                   </div>
                   <p className="text-[10px] text-industrial-400">
-                    Paste this exact URI into the "Authorized redirect URIs" field in Google Cloud Console.
+                    Paste this exact production URI into "Authorized redirect URIs" in Google Cloud Console.
                   </p>
                 </div>
 

@@ -4,7 +4,7 @@ const { getRow, runQuery } = require('../db');
 /**
  * Derive Dynamic Environment-Aware Redirect URI
  */
-function getDynamicRedirectUri(customRedirectUri = '') {
+function getDynamicRedirectUri(req = null, customRedirectUri = '') {
   if (customRedirectUri && customRedirectUri.trim()) {
     return customRedirectUri.trim();
   }
@@ -15,16 +15,24 @@ function getDynamicRedirectUri(customRedirectUri = '') {
     const cleanAppUrl = process.env.APP_URL.trim().replace(/\/+$/, '');
     return `${cleanAppUrl}/api/gmail/oauth/callback`;
   }
+  if (req) {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || (process.env.NODE_ENV === 'production' ? 'https' : 'http');
+    const host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:5001';
+    return `${protocol}://${host}/api/gmail/oauth/callback`;
+  }
+  if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
+    return 'https://prosqora-1.onrender.com/api/gmail/oauth/callback';
+  }
   return 'http://localhost:5001/api/gmail/oauth/callback';
 }
 
 /**
  * Validate Google OAuth Credentials in Environment
  */
-function validateOAuthCredentials(customRedirectUri = '') {
+function validateOAuthCredentials(req = null, customRedirectUri = '') {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = getDynamicRedirectUri(customRedirectUri);
+  const redirectUri = getDynamicRedirectUri(req, customRedirectUri);
 
   const isConfigured = Boolean(
     clientId && clientId.trim() && !clientId.includes('dummy') &&
@@ -46,16 +54,16 @@ function validateOAuthCredentials(customRedirectUri = '') {
 /**
  * Initialize Google OAuth 2.0 Client
  */
-function getOAuth2Client(customRedirectUri = '') {
-  const { clientId, clientSecret, redirectUri } = validateOAuthCredentials(customRedirectUri);
+function getOAuth2Client(req = null, customRedirectUri = '') {
+  const { clientId, clientSecret, redirectUri } = validateOAuthCredentials(req, customRedirectUri);
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
 /**
  * Generate Google OAuth 2.0 Authorization URL with Account Chooser
  */
-function getAuthUrl(state = '', customRedirectUri = '') {
-  const oauth2Client = getOAuth2Client(customRedirectUri);
+function getAuthUrl(state = '', req = null, customRedirectUri = '') {
+  const oauth2Client = getOAuth2Client(req, customRedirectUri);
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'select_account consent',
@@ -71,8 +79,8 @@ function getAuthUrl(state = '', customRedirectUri = '') {
 /**
  * Exchange Authorization Code for Access & Refresh Tokens
  */
-async function getTokensFromCode(code) {
-  const oauth2Client = getOAuth2Client();
+async function getTokensFromCode(code, req = null, customRedirectUri = '') {
+  const oauth2Client = getOAuth2Client(req, customRedirectUri);
   const { tokens } = await oauth2Client.getToken(code);
   oauth2Client.setCredentials(tokens);
 
