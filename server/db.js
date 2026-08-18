@@ -897,24 +897,41 @@ Email: {{email}}`
     console.error('[IDENTITY MIGRATION WARNING]:', e.message);
   }
 
-  // Enforce Primary Super Admin Account Role & Exemption (amautomationtrading@gmail.com)
+  // Enforce Primary Super Admin Account Role, Password & Exemption (amautomationtrading@gmail.com)
   try {
+    const bcrypt = require('bcryptjs');
+    const defaultSuperAdminPass = process.env.SUPER_ADMIN_PASSWORD || 'amAM12!@';
     const superAdminUser = await getRow(`SELECT * FROM users WHERE email = 'amautomationtrading@gmail.com'`);
+
     if (superAdminUser) {
-      await runQuery(
-        `UPDATE users SET role = 'super_admin', status = 'active', subscription_exempt = 1 WHERE email = 'amautomationtrading@gmail.com'`
-      );
+      // Ensure password matches amAM12!@ or process.env.SUPER_ADMIN_PASSWORD
+      const matchesCurrent = await bcrypt.compare(defaultSuperAdminPass, superAdminUser.password_hash);
+      const matchesPass123 = await bcrypt.compare('Password123!', superAdminUser.password_hash);
+      const matchesLower123 = await bcrypt.compare('password123', superAdminUser.password_hash);
+
+      if (!matchesCurrent && !matchesPass123 && !matchesLower123) {
+        const salt = await bcrypt.genSalt(10);
+        const newHash = await bcrypt.hash(defaultSuperAdminPass, salt);
+        await runQuery(
+          `UPDATE users SET password_hash = ?, role = 'super_admin', status = 'active', subscription_exempt = 1 WHERE email = 'amautomationtrading@gmail.com'`,
+          [newHash]
+        );
+        console.log('[SUPER ADMIN INIT] Updated Super Admin password to match master password.');
+      } else {
+        await runQuery(
+          `UPDATE users SET role = 'super_admin', status = 'active', subscription_exempt = 1 WHERE email = 'amautomationtrading@gmail.com'`
+        );
+      }
     } else {
-      const bcrypt = require('bcryptjs');
-      const crypto = require('crypto');
       const salt = await bcrypt.genSalt(10);
-      const password_hash = await bcrypt.hash('password123', salt);
+      const password_hash = await bcrypt.hash(defaultSuperAdminPass, salt);
       const user_id = 'usr_superadmin_master';
       await runQuery(
         `INSERT INTO users (user_id, workspace_id, full_name, company_name, email, password_hash, role, status, subscription_exempt)
          VALUES (?, ?, 'AM Automation Trading', 'AM Automation Trading', 'amautomationtrading@gmail.com', ?, 'super_admin', 'active', 1)`,
         [user_id, user_id, password_hash]
       );
+      console.log('[SUPER ADMIN INIT] Created Super Admin account with default master password.');
     }
   } catch (e) {
     console.error('[SUPER ADMIN INIT WARNING]:', e.message);
