@@ -20,10 +20,20 @@ if (isPostgres) {
   console.log('[DATABASE] Connected to SQLite database:', dbPath);
 }
 
-// Convert SQLite '?' placeholders to PostgreSQL '$1, $2' format when using Postgres
+// Convert SQLite '?' placeholders & DDL data types to PostgreSQL format when using Postgres
 const convertSqlForPostgres = (sql) => {
+  let pgSql = sql;
+  
+  // Convert DDL data types and auto-increment primary keys
+  pgSql = pgSql
+    .replace(/INTEGER PRIMARY KEY AUTOINCREMENT/gi, 'SERIAL PRIMARY KEY')
+    .replace(/DATETIME/gi, 'TIMESTAMP');
+
+  // Convert positional parameter placeholders ? -> $1, $2, $3...
   let index = 1;
-  return sql.replace(/\?/g, () => `$${index++}`);
+  pgSql = pgSql.replace(/\?/g, () => `$${index++}`);
+  
+  return pgSql;
 };
 
 const runQuery = async (sql, params = []) => {
@@ -328,93 +338,95 @@ const initDb = async () => {
     await runQuery(`ALTER TABLE subscriptions ADD COLUMN user_limit_override INTEGER`);
   } catch (e) {}
 
-  // SAFE COMPOSITE MIGRATION: Replace any global UNIQUE(normalized_url) constraint with UNIQUE(user_id, normalized_url)
-  try {
-    // Check if table contains global unique constraint by checking table_info or pragma index_list
-    const indexList = await getAll(`PRAGMA index_list('leads')`);
-    const hasGlobalUnique = indexList.some((idx) => idx.unique && !idx.name.includes('user_normalized'));
+  // SAFE COMPOSITE MIGRATION: Replace any global UNIQUE(normalized_url) constraint with UNIQUE(user_id, normalized_url) (SQLite Only)
+  if (!isPostgres) {
+    try {
+      // Check if table contains global unique constraint by checking table_info or pragma index_list
+      const indexList = await getAll(`PRAGMA index_list('leads')`);
+      const hasGlobalUnique = indexList.some((idx) => idx.unique && !idx.name.includes('user_normalized'));
 
-    if (hasGlobalUnique) {
-      console.log('[MIGRATION] Migrating leads table schema to composite UNIQUE(user_id, normalized_url)...');
-      
-      // Step A: Create temporary table with composite unique constraint
-      await runQuery(`
-        CREATE TABLE leads_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          lead_id TEXT UNIQUE,
-          user_id TEXT NOT NULL DEFAULT 'demo_user',
-          company_name TEXT NOT NULL,
-          website TEXT NOT NULL,
-          normalized_url TEXT NOT NULL,
-          category TEXT DEFAULT '',
-          categories TEXT DEFAULT '[]',
-          category_evidence TEXT DEFAULT '[]',
-          location TEXT DEFAULT '',
-          address TEXT DEFAULT '',
-          city TEXT DEFAULT '',
-          state TEXT DEFAULT '',
-          country TEXT DEFAULT '',
-          phone TEXT DEFAULT '',
-          normalized_phone TEXT DEFAULT '',
-          additional_phones TEXT DEFAULT '[]',
-          email TEXT DEFAULT '',
-          email_source TEXT DEFAULT '',
-          whatsapp TEXT DEFAULT '',
-          whatsapp_url TEXT DEFAULT '',
-          contact_person TEXT DEFAULT '',
-          contacts TEXT DEFAULT '[]',
-          products TEXT DEFAULT '',
-          services TEXT DEFAULT '',
-          industries TEXT DEFAULT '',
-          machines TEXT DEFAULT '',
-          applications TEXT DEFAULT '',
-          linkedin TEXT DEFAULT '',
-          facebook TEXT DEFAULT '',
-          instagram TEXT DEFAULT '',
-          youtube TEXT DEFAULT '',
-          twitter TEXT DEFAULT '',
-          automation_opportunity TEXT DEFAULT '',
-          website_status TEXT DEFAULT '⚪ Not Accessible',
-          http_status INTEGER DEFAULT 0,
-          final_url TEXT DEFAULT '',
-          checked_date TEXT DEFAULT '',
-          lead_status TEXT DEFAULT 'New',
-          last_contact TEXT DEFAULT '',
-          next_followup TEXT DEFAULT '',
-          followup_count INTEGER DEFAULT 0,
-          contact_method TEXT DEFAULT '',
-          notes TEXT DEFAULT '',
-          search_query TEXT DEFAULT '',
-          search_location TEXT DEFAULT '',
-          confidence_score TEXT DEFAULT 'LOW',
-          contact_evidence TEXT DEFAULT '[]',
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(user_id, normalized_url)
-        )
-      `);
+      if (hasGlobalUnique) {
+        console.log('[MIGRATION] Migrating leads table schema to composite UNIQUE(user_id, normalized_url)...');
+        
+        // Step A: Create temporary table with composite unique constraint
+        await runQuery(`
+          CREATE TABLE leads_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lead_id TEXT UNIQUE,
+            user_id TEXT NOT NULL DEFAULT 'demo_user',
+            company_name TEXT NOT NULL,
+            website TEXT NOT NULL,
+            normalized_url TEXT NOT NULL,
+            category TEXT DEFAULT '',
+            categories TEXT DEFAULT '[]',
+            category_evidence TEXT DEFAULT '[]',
+            location TEXT DEFAULT '',
+            address TEXT DEFAULT '',
+            city TEXT DEFAULT '',
+            state TEXT DEFAULT '',
+            country TEXT DEFAULT '',
+            phone TEXT DEFAULT '',
+            normalized_phone TEXT DEFAULT '',
+            additional_phones TEXT DEFAULT '[]',
+            email TEXT DEFAULT '',
+            email_source TEXT DEFAULT '',
+            whatsapp TEXT DEFAULT '',
+            whatsapp_url TEXT DEFAULT '',
+            contact_person TEXT DEFAULT '',
+            contacts TEXT DEFAULT '[]',
+            products TEXT DEFAULT '',
+            services TEXT DEFAULT '',
+            industries TEXT DEFAULT '',
+            machines TEXT DEFAULT '',
+            applications TEXT DEFAULT '',
+            linkedin TEXT DEFAULT '',
+            facebook TEXT DEFAULT '',
+            instagram TEXT DEFAULT '',
+            youtube TEXT DEFAULT '',
+            twitter TEXT DEFAULT '',
+            automation_opportunity TEXT DEFAULT '',
+            website_status TEXT DEFAULT '⚪ Not Accessible',
+            http_status INTEGER DEFAULT 0,
+            final_url TEXT DEFAULT '',
+            checked_date TEXT DEFAULT '',
+            lead_status TEXT DEFAULT 'New',
+            last_contact TEXT DEFAULT '',
+            next_followup TEXT DEFAULT '',
+            followup_count INTEGER DEFAULT 0,
+            contact_method TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            search_query TEXT DEFAULT '',
+            search_location TEXT DEFAULT '',
+            confidence_score TEXT DEFAULT 'LOW',
+            contact_evidence TEXT DEFAULT '[]',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, normalized_url)
+          )
+        `);
 
-      // Step B: Copy existing data safely into leads_new
-      await runQuery(`
-        INSERT OR IGNORE INTO leads_new SELECT 
-          id, lead_id, COALESCE(user_id, 'demo_user'), company_name, website, COALESCE(normalized_url, ''),
-          category, categories, category_evidence, location, address, city, state, country,
-          phone, normalized_phone, additional_phones, email, email_source, whatsapp, whatsapp_url,
-          contact_person, contacts, products, services, industries, machines, applications,
-          linkedin, facebook, instagram, youtube, twitter, automation_opportunity,
-          website_status, http_status, final_url, checked_date, lead_status, last_contact,
-          next_followup, followup_count, contact_method, notes, search_query, search_location,
-          confidence_score, contact_evidence, created_at, updated_at
-        FROM leads
-      `);
+        // Step B: Copy existing data safely into leads_new
+        await runQuery(`
+          INSERT OR IGNORE INTO leads_new SELECT 
+            id, lead_id, COALESCE(user_id, 'demo_user'), company_name, website, COALESCE(normalized_url, ''),
+            category, categories, category_evidence, location, address, city, state, country,
+            phone, normalized_phone, additional_phones, email, email_source, whatsapp, whatsapp_url,
+            contact_person, contacts, products, services, industries, machines, applications,
+            linkedin, facebook, instagram, youtube, twitter, automation_opportunity,
+            website_status, http_status, final_url, checked_date, lead_status, last_contact,
+            next_followup, followup_count, contact_method, notes, search_query, search_location,
+            confidence_score, contact_evidence, created_at, updated_at
+          FROM leads
+        `);
 
-      // Step C: Swap table
-      await runQuery(`DROP TABLE leads`);
-      await runQuery(`ALTER TABLE leads_new RENAME TO leads`);
-      console.log('[MIGRATION] Leads table successfully migrated to composite UNIQUE(user_id, normalized_url)!');
+        // Step C: Swap table
+        await runQuery(`DROP TABLE leads`);
+        await runQuery(`ALTER TABLE leads_new RENAME TO leads`);
+        console.log('[MIGRATION] Leads table successfully migrated to composite UNIQUE(user_id, normalized_url)!');
+      }
+    } catch (err) {
+      console.error('[MIGRATION WARNING] Non-fatal migration check error:', err.message);
     }
-  } catch (err) {
-    console.error('[MIGRATION WARNING] Non-fatal migration check error:', err.message);
   }
 
   // Create composite index for instant tenant URL queries
