@@ -1,12 +1,27 @@
 {
-  "name": "prosqora-crm",
+  "name": "prosqora",
   "version": "2.5.0",
   "description": "Prosqora — Intelligent Lead Discovery & CRM",
   "main": "server/server.js",
   "scripts": {
-    "build": "cd client && npm install && npm run build && cd ../server && npm install",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "cd client && npm install && npm run build",
+    "build:server": "cd server && npm install",
     "start": "cd server && node server.js",
     "test": "node run_master_qa_audit.js"
+  },
+  "dependencies": {
+    "axios": "^1.19.0",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "googleapis": "^174.0.1",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.13.3",
+    "sqlite3": "^5.1.7"
   },
   "keywords": [
     "prosqora",

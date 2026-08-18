@@ -1,7 +1,7 @@
 {
-  "name": "autolead-server",
+  "name": "prosqora-server",
   "version": "1.0.0",
-  "description": "AutoLead CRM Backend Server",
+  "description": "Prosqora — Intelligent Lead Discovery & CRM Backend Server",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
