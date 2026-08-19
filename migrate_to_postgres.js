@@ -302,6 +302,39 @@ async function migrateToPostgres() {
     )
   `);
 
+  // 12. PRICE LISTS
+  await pgQuery(`
+    CREATE TABLE IF NOT EXISTS price_lists (
+      id SERIAL PRIMARY KEY,
+      list_id VARCHAR(255) UNIQUE NOT NULL,
+      user_id VARCHAR(255) NOT NULL,
+      brand_name VARCHAR(255) DEFAULT 'Mitsubishi Electric',
+      list_title VARCHAR(255) NOT NULL,
+      file_name VARCHAR(255) DEFAULT '',
+      total_items INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 13. PRICE LIST ITEMS
+  await pgQuery(`
+    CREATE TABLE IF NOT EXISTS price_list_items (
+      id SERIAL PRIMARY KEY,
+      item_id VARCHAR(255) UNIQUE NOT NULL,
+      list_id VARCHAR(255) NOT NULL,
+      user_id VARCHAR(255) NOT NULL,
+      s_no VARCHAR(50) DEFAULT '',
+      model_number VARCHAR(255) NOT NULL,
+      description TEXT DEFAULT '',
+      list_price DOUBLE PRECISION DEFAULT 0,
+      currency VARCHAR(10) DEFAULT 'INR',
+      category VARCHAR(100) DEFAULT 'Compact PLC',
+      stock_status VARCHAR(100) DEFAULT 'Stock',
+      brand_name VARCHAR(255) DEFAULT 'Mitsubishi Electric',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // 12. CUSTOMER SUBSCRIPTIONS
   await pgQuery(`
     CREATE TABLE IF NOT EXISTS customer_subscriptions (

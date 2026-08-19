@@ -180,30 +180,37 @@ router.delete('/:listId', async (req, res) => {
 async function seedBaselineForUser(userId) {
   const listId = `LIST-MITSUBISHI-FY26`;
 
-  // Create price list entry
-  await runQuery(
-    `INSERT INTO price_lists (list_id, user_id, brand_name, list_title, file_name, total_items)
-     VALUES (?, ?, 'Mitsubishi Electric', 'Factory Automation Systems Price List FY 2026-27', 'Searchable_PRICE LIST - 26-27.pdf', ?)
-     ON CONFLICT(list_id) DO NOTHING`,
-    [listId, userId, MITSUBISHI_FX3S_BASELINE.length]
-  );
+  try {
+    const existingList = await getRow(`SELECT * FROM price_lists WHERE list_id = ?`, [listId]);
+    if (!existingList) {
+      await runQuery(
+        `INSERT INTO price_lists (list_id, user_id, brand_name, list_title, file_name, total_items)
+         VALUES (?, ?, 'Mitsubishi Electric', 'Factory Automation Systems Price List FY 2026-27', 'Searchable_PRICE LIST - 26-27.pdf', ?)`,
+        [listId, userId, MITSUBISHI_FX3S_BASELINE.length]
+      );
+    }
+  } catch (e) {}
 
   // Insert baseline items
   for (let i = 0; i < MITSUBISHI_FX3S_BASELINE.length; i++) {
     const item = MITSUBISHI_FX3S_BASELINE[i];
     const itemId = `ITEM-${listId}-${i + 1}`;
 
-    await runQuery(
-      `INSERT INTO price_list_items (
-         item_id, list_id, user_id, s_no, model_number, description, list_price, currency, category, stock_status, brand_name
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(item_id) DO NOTHING`,
-      [
-        itemId, listId, userId, item.s_no,
-        item.model_number, item.description, item.list_price,
-        'INR', item.category, item.stock_status, item.brand_name
-      ]
-    );
+    try {
+      const existingItem = await getRow(`SELECT * FROM price_list_items WHERE item_id = ?`, [itemId]);
+      if (!existingItem) {
+        await runQuery(
+          `INSERT INTO price_list_items (
+             item_id, list_id, user_id, s_no, model_number, description, list_price, currency, category, stock_status, brand_name
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            itemId, listId, userId, item.s_no,
+            item.model_number, item.description, item.list_price,
+            'INR', item.category, item.stock_status, item.brand_name
+          ]
+        );
+      }
+    } catch (e) {}
   }
 }
 

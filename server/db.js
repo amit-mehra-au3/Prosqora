@@ -328,6 +328,39 @@ const initDb = async () => {
     )
   `);
 
+  // 10. PRICE LISTS CATALOGUE TABLE
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS price_lists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      list_id TEXT UNIQUE NOT NULL,
+      user_id TEXT NOT NULL,
+      brand_name TEXT DEFAULT 'Mitsubishi Electric',
+      list_title TEXT NOT NULL,
+      file_name TEXT DEFAULT '',
+      total_items INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 11. PRICE LIST ITEMS TABLE
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS price_list_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT UNIQUE NOT NULL,
+      list_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      s_no TEXT DEFAULT '',
+      model_number TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      list_price REAL DEFAULT 0,
+      currency TEXT DEFAULT 'INR',
+      category TEXT DEFAULT 'Compact PLC',
+      stock_status TEXT DEFAULT 'Stock',
+      brand_name TEXT DEFAULT 'Mitsubishi Electric',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   try {
     await runQuery(`ALTER TABLE subscriptions ADD COLUMN lead_limit_override INTEGER`);
   } catch (e) {}
