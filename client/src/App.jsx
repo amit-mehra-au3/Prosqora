@@ -20,6 +20,7 @@ import ExportPage from './pages/ExportPage';
 import SettingsPage from './pages/SettingsPage';
 import CampaignsPage from './pages/CampaignsPage';
 import EmailTemplatesPage from './pages/EmailTemplatesPage';
+import PriceLookupPage from './pages/PriceLookupPage';
 import AdminPanelPage from './pages/AdminPanelPage';
 import SuperAdminPanelPage from './pages/SuperAdminPanelPage';
 import LeadDetailModal from './components/LeadDetailModal';
@@ -183,6 +184,10 @@ function AuthenticatedCrmLayout({ initialPage = 'dashboard' }) {
 
           {activePage === 'email-templates' && (
             <EmailTemplatesPage />
+          )}
+
+          {activePage === 'price-lookup' && (
+            <PriceLookupPage />
           )}
 
           {activePage === 'follow-ups' && (

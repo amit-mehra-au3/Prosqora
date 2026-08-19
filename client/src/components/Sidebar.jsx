@@ -11,7 +11,8 @@ import {
   Cpu,
   ShieldCheck,
   Crown,
-  AlertTriangle
+  AlertTriangle,
+  Tag
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -25,6 +26,7 @@ export default function Sidebar({ activePage, setActivePage, isDemoMode }) {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'scan-website', label: 'Scan Website', icon: Globe },
     { id: 'all-leads', label: 'All Leads', icon: Database },
+    { id: 'price-lookup', label: 'PDF Price Lookup', icon: Tag },
     { id: 'email-campaigns', label: 'Email Campaigns', icon: Mail },
     { id: 'email-templates', label: 'Email Templates', icon: FileText },
     { id: 'follow-ups', label: 'Follow-ups', icon: CalendarCheck }

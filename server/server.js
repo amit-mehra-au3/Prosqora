@@ -37,11 +37,14 @@ app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+const priceListsRoutes = require('./routes/priceLists');
+
 // Attach Auth, Super Admin, CRM API, Email Outreach, Admin Panel & Billing Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/price-lists', priceListsRoutes);
 app.use('/api', apiRoutes);
 app.use('/api', emailRoutes);
 
