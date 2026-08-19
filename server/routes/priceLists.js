@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const { authenticateToken } = require('../middleware/authMiddleware');
 const { getRow, getAll, runQuery } = require('../db');
-const { parsePdfPriceList, parseCsvPriceList, MITSUBISHI_FX3S_BASELINE } = require('../services/pdfPriceParser');
+const { parsePdfPriceList, parseImagePriceList, parseCsvPriceList, MITSUBISHI_FX3S_BASELINE } = require('../services/pdfPriceParser');
 
 const path = require('path');
 const fs = require('fs');
@@ -140,6 +140,84 @@ router.post('/upload-pdf', upload.single('pdfFile'), async (req, res) => {
     });
   } catch (err) {
     console.error('[PDF UPLOAD ERROR]:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * 2B. BULK UPLOAD PRICE LIST IMAGES (Up to 500 Images via OCR)
+ * POST /api/price-lists/upload-images
+ */
+router.post('/upload-images', upload.array('imageFiles', 500), async (req, res) => {
+  try {
+    await ensurePriceListTablesExist();
+    const userId = req.user.user_id;
+    const brandName = req.body.brandName || 'Mitsubishi Electric';
+    const listTitle = req.body.listTitle || 'Scanned Price List Images Batch';
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, error: 'Please upload at least one image file (up to 500 images).' });
+    }
+
+    console.log(`[BULK IMAGE UPLOAD] Processing ${req.files.length} image files for user ${userId}...`);
+
+    let totalExtractedItems = [];
+    const listId = `IMG-LIST-${Date.now()}`;
+
+    for (let f = 0; f < req.files.length; f++) {
+      const file = req.files[f];
+      try {
+        const fileBuffer = file.buffer || fs.readFileSync(file.path);
+        const imageItems = await parseImagePriceList(fileBuffer, brandName);
+        if (imageItems && imageItems.length > 0) {
+          totalExtractedItems.push(...imageItems);
+        }
+      } catch (imgErr) {
+        console.warn(`[IMAGE OCR FILE WARNING ${file.originalname}]:`, imgErr.message);
+      }
+    }
+
+    // Save catalogue header
+    try {
+      await runQuery(
+        `INSERT INTO price_lists (list_id, user_id, brand_name, list_title, file_name, total_items)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [listId, userId, brandName, listTitle, `${req.files.length} Images Batch`, totalExtractedItems.length]
+      );
+    } catch (headerErr) {
+      console.warn('[IMAGE UPLOAD HEADER WARNING]:', headerErr.message);
+    }
+
+    // Save catalogue items
+    for (let i = 0; i < totalExtractedItems.length; i++) {
+      const item = totalExtractedItems[i];
+      const itemId = `ITEM-${listId}-${i + 1}`;
+      try {
+        await runQuery(
+          `INSERT INTO price_list_items (
+             item_id, list_id, user_id, s_no, model_number, description, list_price, currency, category, stock_status, brand_name
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            itemId, listId, userId, item.s_no || `${i + 1}`,
+            item.model_number, item.description || '', item.list_price || 0,
+            'INR', item.category || 'General Automation', item.stock_status || 'Stock', brandName
+          ]
+        );
+      } catch (itemErr) {
+        console.warn(`[IMAGE ITEM INSERT WARNING ${itemId}]:`, itemErr.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      listId,
+      message: `Successfully processed ${req.files.length} images via OCR and imported ${totalExtractedItems.length} model prices!`,
+      totalFiles: req.files.length,
+      totalItems: totalExtractedItems.length,
+      items: totalExtractedItems
+    });
+  } catch (err) {
+    console.error('[BULK IMAGE UPLOAD ERROR]:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

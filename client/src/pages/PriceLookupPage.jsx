@@ -15,7 +15,8 @@ import {
   Plus,
   Trash2,
   Building2,
-  FileCheck
+  FileCheck,
+  Image
 } from 'lucide-react';
 
 export default function PriceLookupPage() {
@@ -104,6 +105,43 @@ export default function PriceLookupPage() {
     }
   };
 
+  const handleImageBatchUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    if (files.length > 500) {
+      alert('You can upload a maximum of 500 images per batch.');
+      return;
+    }
+
+    setUploadingPdf(true);
+    setUploadMsg(`Processing ${files.length} price list image(s) via Tesseract OCR Engine...`);
+
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('imageFiles', file);
+    });
+    formData.append('brandName', brandName);
+    formData.append('listTitle', `${files.length} Scanned Price List Images Batch`);
+
+    try {
+      const res = await axios.post('/api/price-lists/upload-images', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (res.data.success) {
+        setUploadMsg(`✅ ${res.data.message}`);
+        await fetchCatalogues();
+        await fetchPriceItems(searchQuery);
+        setTimeout(() => setUploadMsg(''), 5000);
+      }
+    } catch (err) {
+      setUploadMsg(`❌ Image OCR Upload failed: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setUploadingPdf(false);
+    }
+  };
+
   const handleSeedDemo = async () => {
     setLoading(true);
     try {
@@ -139,18 +177,31 @@ export default function PriceLookupPage() {
             <span>PDF Price List & Model Lookup</span>
           </h1>
           <p className="text-xs text-industrial-400 mt-1">
-            Upload OEM price lists (PDF up to 500MB, Scanned Image PDF via OCR Engine, or CSV) and search any model number for instant list prices & stock availability.
+            Upload OEM price lists (PDF up to 500MB, Images up to 500 files via OCR Engine, or CSV) and search any model number for instant list prices & stock availability.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={handleSeedDemo}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-white font-bold text-xs border border-industrial-700 transition-all shrink-0"
           >
             <Sparkles className="w-4 h-4 text-brand-orange" />
-            <span>Load Mitsubishi FY 2026-27 Catalogue</span>
+            <span>Load Mitsubishi Catalogue</span>
           </button>
+
+          <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-white font-bold text-xs border border-industrial-700 cursor-pointer transition-all shrink-0">
+            <Image className="w-4 h-4 text-emerald-400" />
+            <span>Upload Images (Max 500)</span>
+            <input
+              type="file"
+              multiple
+              accept="image/*,.png,.jpg,.jpeg,.webp"
+              onChange={handleImageBatchUpload}
+              className="hidden"
+              disabled={uploadingPdf}
+            />
+          </label>
 
           <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-orange hover:bg-brand-orange-hover text-white font-bold text-xs shadow-lg shadow-brand-orange/20 cursor-pointer transition-all shrink-0">
             <Upload className="w-4 h-4" />

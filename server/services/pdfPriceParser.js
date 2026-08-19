@@ -216,6 +216,60 @@ async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') 
 }
 
 /**
+ * Parse an image file buffer (PNG, JPG, JPEG, WEBP) using Tesseract OCR to extract models, descriptions, list prices
+ */
+async function parseImagePriceList(imageBuffer, brandName = 'Mitsubishi Electric') {
+  const items = [];
+  try {
+    const Tesseract = require('tesseract.js');
+    const { data: { text: ocrText } } = await Tesseract.recognize(imageBuffer, 'eng');
+    
+    if (ocrText) {
+      const lines = ocrText.split(/\r?\n/);
+      let currentCategory = 'Factory Automation';
+
+      for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+
+        if (/PLC|INVERTER|DRIVE|SERVO|SENSOR|HMI|COMPACT PLC|MODULAR PLC/i.test(line) && line.length < 50) {
+          currentCategory = line;
+        }
+
+        // Match model number and list price
+        const modelPriceRegex1 = /(?:(\d+)\s+)?([A-Z0-9\-\/]{4,30})\s+(.+?)\s+[₹Rs\.\s]*([\d,]+(?:\.\d{2})?)\s*(Stock|Non Stock|Non-Stock)?/i;
+        const match = line.match(modelPriceRegex1);
+
+        if (match) {
+          const sNo = match[1] || `${items.length + 1}`;
+          const modelNumber = match[2].trim();
+          const description = match[3].trim();
+          const priceStr = match[4].replace(/,/g, '');
+          const listPrice = parseFloat(priceStr) || 0;
+          const stockStatus = match[5] && match[5].toLowerCase().includes('non') ? 'Non Stock' : 'Stock';
+
+          if (modelNumber.length >= 4 && !/TOTAL|PAGE|SNO|MODEL|PRICE|INDEX|SR\.NO/i.test(modelNumber)) {
+            items.push({
+              s_no: sNo,
+              model_number: modelNumber,
+              description: description || 'Factory Automation Component',
+              list_price: listPrice,
+              stock_status: stockStatus,
+              category: currentCategory,
+              brand_name: brandName
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[IMAGE OCR WARNING] Error during image OCR parsing:', err.message);
+  }
+
+  return items;
+}
+
+/**
  * Parse CSV/Text formatted price lists
  */
 function parseCsvPriceList(csvText, brandName = 'Mitsubishi Electric') {
@@ -258,6 +312,7 @@ function parseCsvPriceList(csvText, brandName = 'Mitsubishi Electric') {
 
 module.exports = {
   parsePdfPriceList,
+  parseImagePriceList,
   parseCsvPriceList,
   MITSUBISHI_FX3S_BASELINE
 };
