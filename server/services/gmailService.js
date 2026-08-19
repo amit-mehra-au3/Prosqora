@@ -259,7 +259,9 @@ async function sendGmailMessage({ userId, to, subject, body, businessCardImage =
 }
 
 module.exports = {
+  getDynamicRedirectUri,
   validateOAuthCredentials,
+  getOAuth2Client,
   getAuthUrl,
   getTokensFromCode,
   sendGmailMessage

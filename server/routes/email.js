@@ -84,7 +84,22 @@ router.get('/gmail/oauth/callback', async (req, res) => {
       </html>
     `);
   } catch (err) {
-    res.status(500).send('Gmail Authorization Failed: ' + err.message);
+    console.error('[GMAIL OAUTH CALLBACK ERROR]', err.message);
+    res.status(500).send(`
+      <html>
+        <body style="font-family: sans-serif; background: #0f172a; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+          <div style="text-align: center; padding: 2.5rem; background: #1e293b; border-radius: 1rem; border: 1px solid #ef4444; max-width: 480px;">
+            <h2 style="color: #ef4444; margin-top: 0;">⚠️ Gmail Connection Failed</h2>
+            <p style="font-size: 14px; color: #cbd5e1; line-height: 1.5; margin-bottom: 1.5rem;">
+              Gmail authorization could not be completed. Please return to Settings and try again.
+            </p>
+            <button onclick="if(window.opener){window.close();}else{window.location.href='/#/settings';}" style="background: #f97316; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: bold; cursor: pointer; font-size: 14px;">
+              Return to Settings
+            </button>
+          </div>
+        </body>
+      </html>
+    `);
   }
 });
 
