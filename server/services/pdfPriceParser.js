@@ -1,4 +1,4 @@
-const pdfParse = require('pdf-parse');
+const pdfParseModule = require('pdf-parse');
 
 // Pre-seeded Mitsubishi Electric Factory Automation Price List items (matching user's uploaded PDF screenshot Page 6)
 const MITSUBISHI_FX3S_BASELINE = [
@@ -27,8 +27,13 @@ async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') 
   try {
     let text = '';
     try {
-      const data = await pdfParse(fileBuffer);
-      text = (data && data.text) ? data.text : '';
+      if (typeof pdfParseModule === 'function') {
+        const data = await pdfParseModule(fileBuffer);
+        text = (data && data.text) ? data.text : '';
+      } else if (pdfParseModule && typeof pdfParseModule.default === 'function') {
+        const data = await pdfParseModule.default(fileBuffer);
+        text = (data && data.text) ? data.text : '';
+      }
     } catch (pdfErr) {
       console.warn('[PDF PARSE DIRECT WARNING] pdfParse error, using buffer string fallback:', pdfErr.message);
       text = fileBuffer ? fileBuffer.toString('utf8') : '';
