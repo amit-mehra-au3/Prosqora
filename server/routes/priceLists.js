@@ -299,19 +299,21 @@ router.delete('/clear-all', async (req, res) => {
  */
 router.post('/clean-garbage', async (req, res) => {
   try {
-    const userId = req.user.user_id;
-    await runQuery(`
-      DELETE FROM price_list_items 
-      WHERE (user_id = ? OR user_id = 'system')
-        AND (
-          UPPER(model_number) LIKE '%CONTROLLED%' OR
-          UPPER(model_number) LIKE '%DOCUMENT%' OR
-          UPPER(model_number) LIKE '%CIRCULATION%' OR
-          UPPER(model_number) LIKE '%VERSION%' OR
-          UPPER(model_number) LIKE '%PAGE%' OR
-          UPPER(model_number) LIKE '%INDEX%'
-        )
-    `, [userId]);
+    const userId = req.user?.user_id || 'system';
+    await runQuery(
+      `DELETE FROM price_list_items 
+       WHERE (user_id = ? OR user_id = 'system')
+         AND (
+           UPPER(model_number) LIKE '%CONTROLLED%' OR
+           UPPER(model_number) LIKE '%DOCUMENT%' OR
+           UPPER(model_number) LIKE '%CIRCULATION%' OR
+           UPPER(model_number) LIKE '%VERSION%' OR
+           UPPER(model_number) LIKE '%PAGE%' OR
+           UPPER(model_number) LIKE '%INDEX%' OR
+           UPPER(description) LIKE '%CONTROLLED DOCUMENT%'
+         )`,
+      [userId]
+    );
 
     res.json({ success: true, message: 'Cleaned all garbage entries.' });
   } catch (err) {

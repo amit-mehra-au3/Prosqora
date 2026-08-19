@@ -185,7 +185,7 @@ export default function PriceLookupPage() {
         setItems((prev) => prev.filter((i) => i.id !== itemId));
       }
     } catch (err) {
-      alert('Failed to delete item.');
+      alert(`Failed to delete item: ${err.response?.data?.error || err.message}`);
     }
   };
 
@@ -200,7 +200,7 @@ export default function PriceLookupPage() {
         setTimeout(() => setUploadMsg(''), 4000);
       }
     } catch (err) {
-      alert('Failed to clear price list entries.');
+      alert(`Failed to clear price list entries: ${err.response?.data?.error || err.message}`);
     } finally {
       setLoading(false);
     }
@@ -216,7 +216,7 @@ export default function PriceLookupPage() {
         setTimeout(() => setUploadMsg(''), 4000);
       }
     } catch (err) {
-      alert('Failed to clean garbage entries.');
+      alert(`Failed to clean garbage entries: ${err.response?.data?.error || err.message}`);
     } finally {
       setLoading(false);
     }
