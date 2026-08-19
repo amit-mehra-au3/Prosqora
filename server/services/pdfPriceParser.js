@@ -87,11 +87,40 @@ const MITSUBISHI_FX3S_BASELINE = [
   { s_no: '70', model_number: 'SW1DND-GXW3-E', description: 'MELSOFT GX Works3 PLC Programming & Engineering Software License', list_price: 35000.00, stock_status: 'Stock', category: 'Software Solutions', brand_name: 'Mitsubishi Electric' }
 ];
 
+function isGarbageModel(modelNumber, description = '') {
+  if (!modelNumber || modelNumber.length < 3) return true;
+  const combined = `${modelNumber} ${description}`.toUpperCase();
+  const garbageTerms = [
+    'CONTROLLED', 'DOCUMENT', 'MASS CIRCULATION', 'VERSION', 'PAGE',
+    'INDEX', 'S.NO', 'SR.NO', 'DESCRIPTION', 'LIST PRICE', 'CATEGORY',
+    'MITSUBISHI ELECTRIC', 'CHANGES FOR THE BETTER', 'AUTOMATING THE WORLD',
+    'TERMS & CONDITIONS', 'ANNEXURE', 'FA PRODUCT PRICE LIST', 'TOTAL'
+  ];
+  return garbageTerms.some(term => combined.includes(term));
+}
+
+function deduplicateItems(items) {
+  const seen = new Set();
+  const uniqueItems = [];
+  for (const item of items) {
+    if (isGarbageModel(item.model_number, item.description)) continue;
+    const key = item.model_number.toUpperCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueItems.push({
+        ...item,
+        s_no: `${uniqueItems.length + 1}`
+      });
+    }
+  }
+  return uniqueItems;
+}
+
 /**
  * Parse uploaded PDF Buffer and extract model numbers, descriptions, prices, stock statuses
  */
 async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') {
-  const items = [];
+  const rawItems = [];
   try {
     let text = '';
     try {
@@ -127,22 +156,24 @@ async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') 
 
       let match = line.match(modelPriceRegex1);
       if (match) {
-        const sNo = match[1] || `${items.length + 1}`;
+        const sNo = match[1] || `${rawItems.length + 1}`;
         const modelNumber = match[2].trim();
         const description = match[3].trim();
         const priceStr = match[4].replace(/,/g, '');
         const listPrice = parseFloat(priceStr) || 0;
         const stockStatus = match[5].toLowerCase().includes('non') ? 'Non Stock' : 'Stock';
 
-        items.push({
-          s_no: sNo,
-          model_number: modelNumber,
-          description: description,
-          list_price: listPrice,
-          stock_status: stockStatus,
-          category: currentCategory,
-          brand_name: brandName
-        });
+        if (!isGarbageModel(modelNumber, description)) {
+          rawItems.push({
+            s_no: sNo,
+            model_number: modelNumber,
+            description: description,
+            list_price: listPrice,
+            stock_status: stockStatus,
+            category: currentCategory,
+            brand_name: brandName
+          });
+        }
       } else {
         match = line.match(modelPriceRegex2);
         if (match) {
@@ -151,9 +182,9 @@ async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') 
           const priceStr = match[3].replace(/,/g, '');
           const listPrice = parseFloat(priceStr) || 0;
 
-          if (modelNumber.length >= 4 && !/TOTAL|PAGE|SNO|MODEL|PRICE/i.test(modelNumber)) {
-            items.push({
-              s_no: `${items.length + 1}`,
+          if (!isGarbageModel(modelNumber, description)) {
+            rawItems.push({
+              s_no: `${rawItems.length + 1}`,
               model_number: modelNumber,
               description: description,
               list_price: listPrice,
@@ -170,7 +201,7 @@ async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') 
   }
 
   // OCR Fallback: If standard PDF text extraction yielded zero items (scanned non-searchable image PDF)
-  if (items.length === 0 && fileBuffer) {
+  if (rawItems.length === 0 && fileBuffer) {
     console.log('[OCR ENGINE] Non-searchable scanned PDF detected. Initiating Tesseract OCR Character Recognition...');
     try {
       const Tesseract = require('tesseract.js');
@@ -188,9 +219,9 @@ async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') 
             const priceStr = match[3].replace(/,/g, '');
             const listPrice = parseFloat(priceStr) || 0;
 
-            if (modelNumber.length >= 4 && !/TOTAL|PAGE|SNO|MODEL|PRICE/i.test(modelNumber)) {
-              items.push({
-                s_no: `${items.length + 1}`,
+            if (!isGarbageModel(modelNumber, description)) {
+              rawItems.push({
+                s_no: `${rawItems.length + 1}`,
                 model_number: modelNumber,
                 description: description,
                 list_price: listPrice,
@@ -207,9 +238,11 @@ async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') 
     }
   }
 
+  const items = deduplicateItems(rawItems);
+
   // Fallback: If PDF parsing and OCR yielded zero items, return baseline models catalogue
   if (items.length === 0) {
-    return MITSUBISHI_FX3S_BASELINE;
+    return deduplicateItems(MITSUBISHI_FX3S_BASELINE);
   }
 
   return items;
@@ -219,7 +252,7 @@ async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') 
  * Parse an image file buffer (PNG, JPG, JPEG, WEBP) using Tesseract OCR to extract models, descriptions, list prices
  */
 async function parseImagePriceList(imageBuffer, brandName = 'Mitsubishi Electric') {
-  const items = [];
+  const rawItems = [];
   try {
     const Tesseract = require('tesseract.js');
     const { data: { text: ocrText } } = await Tesseract.recognize(imageBuffer, 'eng');
@@ -241,15 +274,15 @@ async function parseImagePriceList(imageBuffer, brandName = 'Mitsubishi Electric
         const match = line.match(modelPriceRegex1);
 
         if (match) {
-          const sNo = match[1] || `${items.length + 1}`;
+          const sNo = match[1] || `${rawItems.length + 1}`;
           const modelNumber = match[2].trim();
           const description = match[3].trim();
           const priceStr = match[4].replace(/,/g, '');
           const listPrice = parseFloat(priceStr) || 0;
           const stockStatus = match[5] && match[5].toLowerCase().includes('non') ? 'Non Stock' : 'Stock';
 
-          if (modelNumber.length >= 4 && !/TOTAL|PAGE|SNO|MODEL|PRICE|INDEX|SR\.NO/i.test(modelNumber)) {
-            items.push({
+          if (!isGarbageModel(modelNumber, description)) {
+            rawItems.push({
               s_no: sNo,
               model_number: modelNumber,
               description: description || 'Factory Automation Component',
@@ -266,7 +299,7 @@ async function parseImagePriceList(imageBuffer, brandName = 'Mitsubishi Electric
     console.error('[IMAGE OCR WARNING] Error during image OCR parsing:', err.message);
   }
 
-  return items;
+  return deduplicateItems(rawItems);
 }
 
 /**

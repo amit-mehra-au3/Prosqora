@@ -47,14 +47,14 @@ router.get('/search', async (req, res) => {
         `SELECT * FROM price_list_items
          WHERE (user_id = ? OR user_id = 'system')
            AND (model_number LIKE ? OR description LIKE ? OR category LIKE ? OR brand_name LIKE ?)
-         ORDER BY s_no ASC, model_number ASC LIMIT 100`,
+         ORDER BY id ASC LIMIT 2000`,
         [userId, searchPattern, searchPattern, searchPattern, searchPattern]
       );
     } else {
       items = await getAll(
         `SELECT * FROM price_list_items
          WHERE (user_id = ? OR user_id = 'system')
-         ORDER BY s_no ASC, model_number ASC LIMIT 100`,
+         ORDER BY id ASC LIMIT 2000`,
         [userId]
       );
     }
@@ -63,7 +63,7 @@ router.get('/search', async (req, res) => {
     if (items.length === 0 && (!query || query.toUpperCase().includes('FX3S') || query.toUpperCase().includes('PLC'))) {
       await seedBaselineForUser(userId);
       items = await getAll(
-        `SELECT * FROM price_list_items WHERE user_id = ? ORDER BY s_no ASC LIMIT 100`,
+        `SELECT * FROM price_list_items WHERE user_id = ? ORDER BY id ASC LIMIT 2000`,
         [userId]
       );
     }
@@ -250,12 +250,78 @@ router.post('/seed-demo', async (req, res) => {
       items
     });
   } catch (err) {
+    console.error('[SEED DEMO ERROR]:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 /**
- * 4. LIST ALL CATALOGUES
+ * 4. DELETE SINGLE PRICE LIST ENTRY ROW
+ * DELETE /api/price-lists/items/:id
+ */
+router.delete('/items/:id', async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const itemId = req.params.id;
+
+    await runQuery(
+      `DELETE FROM price_list_items WHERE id = ? AND (user_id = ? OR user_id = 'system')`,
+      [itemId, userId]
+    );
+
+    res.json({ success: true, message: 'Item deleted successfully.' });
+  } catch (err) {
+    console.error('[DELETE ITEM ERROR]:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * 5. CLEAR ALL PRICE LIST ITEMS FOR WORKSPACE
+ * DELETE /api/price-lists/clear-all
+ */
+router.delete('/clear-all', async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    await runQuery(`DELETE FROM price_list_items WHERE user_id = ? OR user_id = 'system'`, [userId]);
+    await runQuery(`DELETE FROM price_lists WHERE user_id = ? OR user_id = 'system'`, [userId]);
+
+    res.json({ success: true, message: 'All price list items cleared successfully.' });
+  } catch (err) {
+    console.error('[CLEAR ALL ERROR]:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * 6. PURGE GARBAGE HEADER/FOOTER NOISE (e.g. "Controlled", "Document", "Circulation")
+ * POST /api/price-lists/clean-garbage
+ */
+router.post('/clean-garbage', async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    await runQuery(`
+      DELETE FROM price_list_items 
+      WHERE (user_id = ? OR user_id = 'system')
+        AND (
+          UPPER(model_number) LIKE '%CONTROLLED%' OR
+          UPPER(model_number) LIKE '%DOCUMENT%' OR
+          UPPER(model_number) LIKE '%CIRCULATION%' OR
+          UPPER(model_number) LIKE '%VERSION%' OR
+          UPPER(model_number) LIKE '%PAGE%' OR
+          UPPER(model_number) LIKE '%INDEX%'
+        )
+    `, [userId]);
+
+    res.json({ success: true, message: 'Cleaned all garbage entries.' });
+  } catch (err) {
+    console.error('[CLEAN GARBAGE ERROR]:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * 7. LIST ALL CATALOGUES
  * GET /api/price-lists
  */
 router.get('/', async (req, res) => {

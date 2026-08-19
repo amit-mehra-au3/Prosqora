@@ -178,6 +178,50 @@ export default function PriceLookupPage() {
     setTimeout(() => setCopiedId(null), 2500);
   };
 
+  const handleDeleteItem = async (itemId) => {
+    try {
+      const res = await axios.delete(`/api/price-lists/items/${itemId}`);
+      if (res.data.success) {
+        setItems((prev) => prev.filter((i) => i.id !== itemId));
+      }
+    } catch (err) {
+      alert('Failed to delete item.');
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!window.confirm('Are you sure you want to delete all price list entries?')) return;
+    setLoading(true);
+    try {
+      const res = await axios.delete('/api/price-lists/clear-all');
+      if (res.data.success) {
+        setItems([]);
+        setUploadMsg('✅ Cleared all price list items!');
+        setTimeout(() => setUploadMsg(''), 4000);
+      }
+    } catch (err) {
+      alert('Failed to clear price list entries.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCleanGarbage = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.post('/api/price-lists/clean-garbage');
+      if (res.data.success) {
+        await fetchPriceItems(searchQuery);
+        setUploadMsg('✅ Purged all garbage header/footer text entries!');
+        setTimeout(() => setUploadMsg(''), 4000);
+      }
+    } catch (err) {
+      alert('Failed to clean garbage entries.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-16">
       
@@ -226,6 +270,17 @@ export default function PriceLookupPage() {
               disabled={uploadingPdf}
             />
           </label>
+
+          {items.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              title="Delete All Price List Entries"
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold text-xs border border-red-500/40 transition-all shrink-0"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
+              <span>Clear All</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -279,8 +334,17 @@ export default function PriceLookupPage() {
               </button>
             ))}
           </div>
-          <div>
-            Showing <strong className="text-white">{items.length}</strong> matching models
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleCleanGarbage}
+              className="text-xs text-brand-orange hover:underline flex items-center gap-1"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Purge Garbage Noise</span>
+            </button>
+            <div>
+              Showing <strong className="text-white">{items.length}</strong> matching models (Limit 2,000)
+            </div>
           </div>
         </div>
       </div>
@@ -297,7 +361,7 @@ export default function PriceLookupPage() {
             <Tag className="w-10 h-10 text-industrial-500 mx-auto" />
             <h3 className="text-base font-bold text-white">No Models Found Matching "{searchQuery}"</h3>
             <p className="text-xs text-industrial-400 max-w-md mx-auto">
-              Upload a new PDF price list or click "Load Mitsubishi FY 2026-27 Catalogue" to pre-populate baseline models.
+              Upload a new PDF price list or click "Load Mitsubishi Catalogue" to pre-populate baseline models.
             </p>
           </div>
         ) : (
@@ -317,8 +381,8 @@ export default function PriceLookupPage() {
               <tbody className="divide-y divide-industrial-800/60 font-mono">
                 {items.map((item, idx) => (
                   <tr key={item.id || idx} className="hover:bg-industrial-800/40 transition-colors">
-                    <td className="py-3.5 px-4 text-center text-industrial-500 font-mono text-[11px]">
-                      {item.s_no || idx + 1}
+                    <td className="py-3.5 px-4 text-center text-industrial-500 font-mono text-xs font-bold">
+                      {idx + 1}
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-2">
@@ -354,13 +418,23 @@ export default function PriceLookupPage() {
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => handleCopyItem(item)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-industrial-800 hover:bg-industrial-700 text-white font-semibold text-xs border border-industrial-700 transition-colors ml-auto font-sans"
-                      >
-                        <Copy className="w-3.5 h-3.5 text-brand-orange" />
-                        <span>{copiedId === item.id ? 'Copied!' : 'Copy'}</span>
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleCopyItem(item)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-industrial-800 hover:bg-industrial-700 text-white font-semibold text-xs border border-industrial-700 transition-colors font-sans"
+                        >
+                          <Copy className="w-3.5 h-3.5 text-brand-orange" />
+                          <span>{copiedId === item.id ? 'Copied!' : 'Copy'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteItem(item.id)}
+                          title="Delete Entry"
+                          className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
