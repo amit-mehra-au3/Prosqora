@@ -138,7 +138,45 @@ async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') 
     console.error('[PDF PARSER WARNING] Error parsing PDF text:', err.message);
   }
 
-  // Fallback: If PDF parsing yielded zero items (e.g. scanned image PDF or complex layout), return baseline models
+  // OCR Fallback: If standard PDF text extraction yielded zero items (scanned non-searchable image PDF)
+  if (items.length === 0 && fileBuffer) {
+    console.log('[OCR ENGINE] Non-searchable scanned PDF detected. Initiating Tesseract OCR Character Recognition...');
+    try {
+      const Tesseract = require('tesseract.js');
+      const { data: { text: ocrText } } = await Tesseract.recognize(fileBuffer, 'eng');
+      if (ocrText) {
+        const ocrLines = ocrText.split(/\r?\n/);
+        for (let line of ocrLines) {
+          line = line.trim();
+          if (!line) continue;
+
+          const match = line.match(/([A-Z0-9\-\/]{4,30})\s+(.+?)\s+[₹Rs\.\s]*([\d,]+(?:\.\d{2})?)/i);
+          if (match) {
+            const modelNumber = match[1].trim();
+            const description = match[2].trim();
+            const priceStr = match[3].replace(/,/g, '');
+            const listPrice = parseFloat(priceStr) || 0;
+
+            if (modelNumber.length >= 4 && !/TOTAL|PAGE|SNO|MODEL|PRICE/i.test(modelNumber)) {
+              items.push({
+                s_no: `${items.length + 1}`,
+                model_number: modelNumber,
+                description: description,
+                list_price: listPrice,
+                stock_status: 'Stock',
+                category: 'Factory Automation (OCR Extracted)',
+                brand_name: brandName
+              });
+            }
+          }
+        }
+      }
+    } catch (ocrErr) {
+      console.warn('[OCR ENGINE WARNING] Tesseract OCR error:', ocrErr.message);
+    }
+  }
+
+  // Fallback: If PDF parsing and OCR yielded zero items, return baseline models catalogue
   if (items.length === 0) {
     return MITSUBISHI_FX3S_BASELINE;
   }

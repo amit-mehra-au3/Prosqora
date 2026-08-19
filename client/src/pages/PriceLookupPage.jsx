@@ -139,7 +139,7 @@ export default function PriceLookupPage() {
             <span>PDF Price List & Model Lookup</span>
           </h1>
           <p className="text-xs text-industrial-400 mt-1">
-            Upload OEM price lists (PDF/CSV) and search any model number for instant list prices, descriptions, and stock availability.
+            Upload OEM price lists (PDF up to 500MB, Scanned Image PDF via OCR Engine, or CSV) and search any model number for instant list prices & stock availability.
           </p>
         </div>
 

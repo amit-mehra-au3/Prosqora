@@ -5,9 +5,27 @@ const { authenticateToken } = require('../middleware/authMiddleware');
 const { getRow, getAll, runQuery } = require('../db');
 const { parsePdfPriceList, parseCsvPriceList, MITSUBISHI_FX3S_BASELINE } = require('../services/pdfPriceParser');
 
+const path = require('path');
+const fs = require('fs');
+
+const uploadsDir = path.resolve(__dirname, '../uploads/price-lists');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'pricelist-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
 const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 } // 25MB Max
+  storage: storage,
+  limits: { fileSize: 500 * 1024 * 1024 } // 500MB Max for Large PDF & Scanned Documents
 });
 
 router.use(authenticateToken);
@@ -72,13 +90,14 @@ router.post('/upload-pdf', upload.single('pdfFile'), async (req, res) => {
     const brandName = req.body.brandName || 'Mitsubishi Electric';
     const listTitle = req.body.listTitle || 'Factory Automation Systems Price List';
 
-    if (!req.file || !req.file.buffer) {
+    if (!req.file || (!req.file.buffer && !req.file.path)) {
       return res.status(400).json({ success: false, error: 'Please upload a valid PDF file.' });
     }
 
     console.log(`[PDF UPLOAD] Processing PDF upload: ${req.file.originalname} (${req.file.size} bytes)...`);
 
-    const items = await parsePdfPriceList(req.file.buffer, brandName);
+    const fileBuffer = req.file.buffer || fs.readFileSync(req.file.path);
+    const items = await parsePdfPriceList(fileBuffer, brandName, req.file.path);
     const listId = `LIST-${Date.now()}`;
 
     // Save catalogue header
