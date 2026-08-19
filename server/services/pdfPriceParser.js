@@ -25,8 +25,14 @@ const MITSUBISHI_FX3S_BASELINE = [
 async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') {
   const items = [];
   try {
-    const data = await pdfParse(fileBuffer);
-    const text = data.text || '';
+    let text = '';
+    try {
+      const data = await pdfParse(fileBuffer);
+      text = (data && data.text) ? data.text : '';
+    } catch (pdfErr) {
+      console.warn('[PDF PARSE DIRECT WARNING] pdfParse error, using buffer string fallback:', pdfErr.message);
+      text = fileBuffer ? fileBuffer.toString('utf8') : '';
+    }
 
     const lines = text.split(/\r?\n/);
     let currentCategory = 'Factory Automation';
@@ -40,11 +46,13 @@ async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') 
         currentCategory = line;
       }
 
-      // Regex matching lines with Model, Price (e.g., ₹ 16,000.00 or 16,000 or 19050.00)
-      // Matches pattern: [SNo] [Model] [Description] [Price] [StockStatus]
-      const modelPriceRegex = /(?:(\d+)\s+)?([A-Z0-9\-\/]{4,30})\s+(.+?)\s+[₹Rs\.\s]*([\d,]+(?:\.\d{2})?)\s+(Stock|Non Stock|Non-Stock)/i;
-      const match = line.match(modelPriceRegex);
+      // Pattern 1: [SNo] [Model] [Description] [Price] [StockStatus]
+      const modelPriceRegex1 = /(?:(\d+)\s+)?([A-Z0-9\-\/]{4,30})\s+(.+?)\s+[₹Rs\.\s]*([\d,]+(?:\.\d{2})?)\s+(Stock|Non Stock|Non-Stock)/i;
+      
+      // Pattern 2: [Model] [Description] [Price]
+      const modelPriceRegex2 = /([A-Z0-9\-\/]{4,30})\s+(.+?)\s+[₹Rs\.\s]*([\d,]+(?:\.\d{2})?)$/i;
 
+      let match = line.match(modelPriceRegex1);
       if (match) {
         const sNo = match[1] || `${items.length + 1}`;
         const modelNumber = match[2].trim();
@@ -62,13 +70,33 @@ async function parsePdfPriceList(fileBuffer, brandName = 'Mitsubishi Electric') 
           category: currentCategory,
           brand_name: brandName
         });
+      } else {
+        match = line.match(modelPriceRegex2);
+        if (match) {
+          const modelNumber = match[1].trim();
+          const description = match[2].trim();
+          const priceStr = match[3].replace(/,/g, '');
+          const listPrice = parseFloat(priceStr) || 0;
+
+          if (modelNumber.length >= 4 && !/TOTAL|PAGE|SNO|MODEL|PRICE/i.test(modelNumber)) {
+            items.push({
+              s_no: `${items.length + 1}`,
+              model_number: modelNumber,
+              description: description,
+              list_price: listPrice,
+              stock_status: 'Stock',
+              category: currentCategory,
+              brand_name: brandName
+            });
+          }
+        }
       }
     }
   } catch (err) {
     console.error('[PDF PARSER WARNING] Error parsing PDF text:', err.message);
   }
 
-  // Fallback: If PDF parsing yielded zero items (e.g. scanned image PDF or complex layout), use robust baseline items
+  // Fallback: If PDF parsing yielded zero items (e.g. scanned image PDF or complex layout), return baseline models
   if (items.length === 0) {
     return MITSUBISHI_FX3S_BASELINE;
   }

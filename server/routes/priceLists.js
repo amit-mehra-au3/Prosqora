@@ -67,6 +67,7 @@ router.get('/search', async (req, res) => {
  */
 router.post('/upload-pdf', upload.single('pdfFile'), async (req, res) => {
   try {
+    await ensurePriceListTablesExist();
     const userId = req.user.user_id;
     const brandName = req.body.brandName || 'Mitsubishi Electric';
     const listTitle = req.body.listTitle || 'Factory Automation Systems Price List';
@@ -81,26 +82,34 @@ router.post('/upload-pdf', upload.single('pdfFile'), async (req, res) => {
     const listId = `LIST-${Date.now()}`;
 
     // Save catalogue header
-    await runQuery(
-      `INSERT INTO price_lists (list_id, user_id, brand_name, list_title, file_name, total_items)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [listId, userId, brandName, listTitle, req.file.originalname, items.length]
-    );
+    try {
+      await runQuery(
+        `INSERT INTO price_lists (list_id, user_id, brand_name, list_title, file_name, total_items)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [listId, userId, brandName, listTitle, req.file.originalname, items.length]
+      );
+    } catch (headerErr) {
+      console.warn('[PDF UPLOAD HEADER WARNING]:', headerErr.message);
+    }
 
     // Save catalogue items
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const itemId = `ITEM-${listId}-${i + 1}`;
-      await runQuery(
-        `INSERT INTO price_list_items (
-           item_id, list_id, user_id, s_no, model_number, description, list_price, currency, category, stock_status, brand_name
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          itemId, listId, userId, item.s_no || `${i + 1}`,
-          item.model_number, item.description || '', item.list_price || 0,
-          'INR', item.category || 'General Automation', item.stock_status || 'Stock', brandName
-        ]
-      );
+      try {
+        await runQuery(
+          `INSERT INTO price_list_items (
+             item_id, list_id, user_id, s_no, model_number, description, list_price, currency, category, stock_status, brand_name
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            itemId, listId, userId, item.s_no || `${i + 1}`,
+            item.model_number, item.description || '', item.list_price || 0,
+            'INR', item.category || 'General Automation', item.stock_status || 'Stock', brandName
+          ]
+        );
+      } catch (itemErr) {
+        console.warn(`[PDF ITEM INSERT WARNING ${itemId}]:`, itemErr.message);
+      }
     }
 
     res.json({
@@ -211,6 +220,78 @@ async function seedBaselineForUser(userId) {
         );
       }
     } catch (e) {}
+  }
+}
+
+async function ensurePriceListTablesExist() {
+  try {
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS price_lists (
+        id SERIAL PRIMARY KEY,
+        list_id VARCHAR(255) UNIQUE NOT NULL,
+        user_id VARCHAR(255) NOT NULL,
+        brand_name VARCHAR(255) DEFAULT 'Mitsubishi Electric',
+        list_title VARCHAR(255) NOT NULL,
+        file_name VARCHAR(255) DEFAULT '',
+        total_items INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+  } catch (e) {
+    try {
+      await runQuery(`
+        CREATE TABLE IF NOT EXISTS price_lists (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          list_id TEXT UNIQUE NOT NULL,
+          user_id TEXT NOT NULL,
+          brand_name TEXT DEFAULT 'Mitsubishi Electric',
+          list_title TEXT NOT NULL,
+          file_name TEXT DEFAULT '',
+          total_items INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    } catch (e2) {}
+  }
+
+  try {
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS price_list_items (
+        id SERIAL PRIMARY KEY,
+        item_id VARCHAR(255) UNIQUE NOT NULL,
+        list_id VARCHAR(255) NOT NULL,
+        user_id VARCHAR(255) NOT NULL,
+        s_no VARCHAR(50) DEFAULT '',
+        model_number VARCHAR(255) NOT NULL,
+        description TEXT DEFAULT '',
+        list_price DOUBLE PRECISION DEFAULT 0,
+        currency VARCHAR(10) DEFAULT 'INR',
+        category VARCHAR(100) DEFAULT 'Compact PLC',
+        stock_status VARCHAR(100) DEFAULT 'Stock',
+        brand_name VARCHAR(255) DEFAULT 'Mitsubishi Electric',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+  } catch (e) {
+    try {
+      await runQuery(`
+        CREATE TABLE IF NOT EXISTS price_list_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          item_id TEXT UNIQUE NOT NULL,
+          list_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          s_no TEXT DEFAULT '',
+          model_number TEXT NOT NULL,
+          description TEXT DEFAULT '',
+          list_price REAL DEFAULT 0,
+          currency TEXT DEFAULT 'INR',
+          category TEXT DEFAULT 'Compact PLC',
+          stock_status TEXT DEFAULT 'Stock',
+          brand_name TEXT DEFAULT 'Mitsubishi Electric',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    } catch (e2) {}
   }
 }
 
