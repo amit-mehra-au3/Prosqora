@@ -53,7 +53,38 @@ const MITSUBISHI_FX3S_BASELINE = [
   { s_no: '46', model_number: 'FX3U-80MR/DS', description: 'PLC, FX3U Base Unit DC 24V; 40 Inputs DC 24V; 40 Relay Outputs', list_price: 111650.00, stock_status: 'Non Stock', category: 'Compact PLC', brand_name: 'Mitsubishi Electric' },
   { s_no: '47', model_number: 'FX3U-80MR/ES', description: 'PLC, FX3U Base Unit AC 100-240V; 40 Inputs DC 24V; 40 Relay Outputs', list_price: 111650.00, stock_status: 'Stock', category: 'Compact PLC', brand_name: 'Mitsubishi Electric' },
   { s_no: '48', model_number: 'FX3U-80MT/DS', description: 'PLC, FX3U Base Unit DC 24V; 40 Inputs DC 24V; 40 Transistor Outputs', list_price: 111650.00, stock_status: 'Non Stock', category: 'Compact PLC', brand_name: 'Mitsubishi Electric' },
-  { s_no: '49', model_number: 'FX3U-80MT/ESS', description: 'PLC, FX3U Base Unit AC 100-240V; 40 Inputs DC 24V; 40 Transistor Outputs', list_price: 111650.00, stock_status: 'Stock', category: 'Compact PLC', brand_name: 'Mitsubishi Electric' }
+  { s_no: '49', model_number: 'FX3U-80MT/ESS', description: 'PLC, FX3U Base Unit AC 100-240V; 40 Inputs DC 24V; 40 Transistor Outputs', list_price: 111650.00, stock_status: 'Stock', category: 'Compact PLC', brand_name: 'Mitsubishi Electric' },
+
+  // Page 10 & 13 & 14: FX5U / FX5UJ / FX5S Next-Gen MELSEC iQ-F PLC Series
+  { s_no: '50', model_number: 'FX5U-32MR/ES', description: 'MELSEC iQ-F PLC Base Unit AC 100-240V; 16 Inputs; 16 Relay Outputs', list_price: 38500.00, stock_status: 'Stock', category: 'Compact PLC', brand_name: 'Mitsubishi Electric' },
+  { s_no: '51', model_number: 'FX5U-64MR/ES', description: 'MELSEC iQ-F PLC Base Unit AC 100-240V; 32 Inputs; 32 Relay Outputs', list_price: 54000.00, stock_status: 'Stock', category: 'Compact PLC', brand_name: 'Mitsubishi Electric' },
+  { s_no: '52', model_number: 'FX5UJ-24MR/ES', description: 'Compact iQ-F PLC Base Unit AC 100-240V; 12 Inputs; 12 Relay Outputs', list_price: 28000.00, stock_status: 'Stock', category: 'Compact PLC', brand_name: 'Mitsubishi Electric' },
+  { s_no: '53', model_number: 'FX5S-30MR/ES', description: 'Entry iQ-F PLC Base Unit AC 100-240V; 16 Inputs; 14 Relay Outputs', list_price: 24000.00, stock_status: 'Stock', category: 'Compact PLC', brand_name: 'Mitsubishi Electric' },
+
+  // Page 115-149: FREQROL Inverter / VFD Drives (FR-D700 / FR-D800 / FR-E800 / FR-A800 / FR-F800)
+  { s_no: '54', model_number: 'FR-D720-0.4K', description: 'Compact VFD Inverter Drive 0.4kW 200V 3-Phase Input', list_price: 14500.00, stock_status: 'Stock', category: 'Inverter (VFD)', brand_name: 'Mitsubishi Electric' },
+  { s_no: '55', model_number: 'FR-D740-0.75K', description: 'Compact VFD Inverter Drive 0.75kW 400V 3-Phase Input', list_price: 19800.00, stock_status: 'Stock', category: 'Inverter (VFD)', brand_name: 'Mitsubishi Electric' },
+  { s_no: '56', model_number: 'FR-D740-1.5K', description: 'Compact VFD Inverter Drive 1.5kW 400V 3-Phase Input', list_price: 24500.00, stock_status: 'Stock', category: 'Inverter (VFD)', brand_name: 'Mitsubishi Electric' },
+  { s_no: '57', model_number: 'FR-E840-0060-4-60', description: 'High Performance Safety VFD Inverter 2.2kW 400V 3-Phase', list_price: 32000.00, stock_status: 'Stock', category: 'Inverter (VFD)', brand_name: 'Mitsubishi Electric' },
+  { s_no: '58', model_number: 'FR-A840-00126-E2-60', description: 'Advanced Vector Control VFD Inverter Drive 5.5kW 400V', list_price: 78000.00, stock_status: 'Stock', category: 'Inverter (VFD)', brand_name: 'Mitsubishi Electric' },
+
+  // Page 150-229: MELSERVO Servo Drives & Motors (MR-JE / MR-J4 / MR-J5)
+  { s_no: '59', model_number: 'MR-JE-10A', description: 'AC Servo Amplifier 100W Pulse Train / Analog Input', list_price: 36000.00, stock_status: 'Stock', category: 'Servo Drive', brand_name: 'Mitsubishi Electric' },
+  { s_no: '60', model_number: 'MR-JE-20A', description: 'AC Servo Amplifier 200W Pulse Train / Analog Input', list_price: 42000.00, stock_status: 'Stock', category: 'Servo Drive', brand_name: 'Mitsubishi Electric' },
+  { s_no: '61', model_number: 'MR-JE-40A', description: 'AC Servo Amplifier 400W Pulse Train / Analog Input', list_price: 48500.00, stock_status: 'Stock', category: 'Servo Drive', brand_name: 'Mitsubishi Electric' },
+  { s_no: '62', model_number: 'HG-KN13J-S100', description: 'AC Servo Motor 100W 3000 RPM Low Inertia Keyway', list_price: 22000.00, stock_status: 'Stock', category: 'Servo Motor', brand_name: 'Mitsubishi Electric' },
+  { s_no: '63', model_number: 'HG-KN23J-S100', description: 'AC Servo Motor 200W 3000 RPM Low Inertia Keyway', list_price: 26500.00, stock_status: 'Stock', category: 'Servo Motor', brand_name: 'Mitsubishi Electric' },
+
+  // Page 104-112: GOT Human Machine Interface (HMI Touchscreen)
+  { s_no: '64', model_number: 'GS2107-WTBD', description: 'GOT GS Series 7" Wide TFT Color Touchscreen HMI Display DC24V', list_price: 21500.00, stock_status: 'Stock', category: 'GOT HMI', brand_name: 'Mitsubishi Electric' },
+  { s_no: '65', model_number: 'GS2110-WTBD', description: 'GOT GS Series 10" Wide TFT Color Touchscreen HMI Display DC24V', list_price: 34000.00, stock_status: 'Stock', category: 'GOT HMI', brand_name: 'Mitsubishi Electric' },
+  { s_no: '66', model_number: 'GT2507-VTBD', description: 'GOT GT25 Series 7" VGA TFT Color Touchscreen HMI Ethernet/RS232/422', list_price: 48000.00, stock_status: 'Stock', category: 'GOT HMI', brand_name: 'Mitsubishi Electric' },
+  { s_no: '67', model_number: 'GT2710-VTBD', description: 'GOT GT27 Series 10.4" SVGA High Spec HMI Display Ethernet/USB', list_price: 85000.00, stock_status: 'Stock', category: 'GOT HMI', brand_name: 'Mitsubishi Electric' },
+
+  // Page 23 & 31 & 68: iQ-R / Q Modular PLC & MELSOFT Software
+  { s_no: '68', model_number: 'R04CPU', description: 'MELSEC iQ-R High Speed Modular PLC CPU Module 40K Steps', list_price: 68000.00, stock_status: 'Stock', category: 'Modular PLC', brand_name: 'Mitsubishi Electric' },
+  { s_no: '69', model_number: 'Q03UDECPU', description: 'MELSEC Q Series Universal Design PLC CPU Module 30K Steps', list_price: 52000.00, stock_status: 'Stock', category: 'Modular PLC', brand_name: 'Mitsubishi Electric' },
+  { s_no: '70', model_number: 'SW1DND-GXW3-E', description: 'MELSOFT GX Works3 PLC Programming & Engineering Software License', list_price: 35000.00, stock_status: 'Stock', category: 'Software Solutions', brand_name: 'Mitsubishi Electric' }
 ];
 
 /**

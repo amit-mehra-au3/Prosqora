@@ -198,7 +198,7 @@ export default function PriceLookupPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-industrial-400 pt-1">
           <div className="flex items-center gap-2">
             <span>Quick Filters:</span>
-            {['FX3S-10MR', 'FX3S-14MT', 'FX3S-20MR', 'Compact PLC', 'Stock'].map((filter) => (
+            {['FX3S-10MR', 'FX5U', 'FR-D740', 'MR-JE', 'GS2107', 'Stock'].map((filter) => (
               <button
                 key={filter}
                 onClick={() => setSearchQuery(filter)}
