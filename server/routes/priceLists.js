@@ -47,14 +47,14 @@ router.get('/search', async (req, res) => {
         `SELECT * FROM price_list_items
          WHERE (user_id = ? OR user_id = 'system')
            AND (model_number LIKE ? OR description LIKE ? OR category LIKE ? OR brand_name LIKE ?)
-         ORDER BY id ASC LIMIT 2000`,
+         ORDER BY id ASC LIMIT 3000`,
         [userId, searchPattern, searchPattern, searchPattern, searchPattern]
       );
     } else {
       items = await getAll(
         `SELECT * FROM price_list_items
          WHERE (user_id = ? OR user_id = 'system')
-         ORDER BY id ASC LIMIT 2000`,
+         ORDER BY id ASC LIMIT 3000`,
         [userId]
       );
     }
@@ -63,16 +63,28 @@ router.get('/search', async (req, res) => {
     if (items.length === 0 && (!query || query.toUpperCase().includes('FX3S') || query.toUpperCase().includes('PLC'))) {
       await seedBaselineForUser(userId);
       items = await getAll(
-        `SELECT * FROM price_list_items WHERE user_id = ? ORDER BY id ASC LIMIT 2000`,
+        `SELECT * FROM price_list_items WHERE user_id = ? ORDER BY id ASC LIMIT 3000`,
         [userId]
       );
+    }
+
+    // Strict deduplication by model_number in search response
+    const seen = new Set();
+    const uniqueItems = [];
+    for (const item of items) {
+      if (!item.model_number) continue;
+      const key = item.model_number.trim().toUpperCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueItems.push(item);
+      }
     }
 
     res.json({
       success: true,
       query,
-      count: items.length,
-      items
+      count: uniqueItems.length,
+      items: uniqueItems
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -318,6 +330,30 @@ router.post('/clean-garbage', async (req, res) => {
     res.json({ success: true, message: 'Cleaned all garbage entries.' });
   } catch (err) {
     console.error('[CLEAN GARBAGE ERROR]:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * 6B. PURGE DUPLICATE MODEL NUMBERS (Keep only 1 unique entry per model number)
+ * POST /api/price-lists/remove-duplicates
+ */
+router.post('/remove-duplicates', async (req, res) => {
+  try {
+    const userId = req.user?.user_id || 'system';
+
+    await runQuery(`
+      DELETE FROM price_list_items
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM price_list_items
+        GROUP BY UPPER(TRIM(model_number))
+      )
+    `);
+
+    res.json({ success: true, message: 'Successfully removed all duplicate model entries!' });
+  } catch (err) {
+    console.error('[REMOVE DUPLICATES ERROR]:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

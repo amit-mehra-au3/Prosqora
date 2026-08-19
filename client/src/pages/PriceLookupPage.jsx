@@ -50,7 +50,18 @@ export default function PriceLookupPage() {
     try {
       const res = await axios.get(`/api/price-lists/search?q=${encodeURIComponent(query)}`);
       if (res.data.success) {
-        setItems(res.data.items || []);
+        const raw = res.data.items || [];
+        const seen = new Set();
+        const unique = [];
+        for (const item of raw) {
+          if (!item.model_number) continue;
+          const key = item.model_number.trim().toUpperCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(item);
+          }
+        }
+        setItems(unique);
       }
     } catch (err) {
       console.error('Failed to fetch price list items:', err);
@@ -222,6 +233,22 @@ export default function PriceLookupPage() {
     }
   };
 
+  const handleRemoveDuplicates = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.post('/api/price-lists/remove-duplicates');
+      if (res.data.success) {
+        await fetchPriceItems(searchQuery);
+        setUploadMsg('✅ Successfully removed all duplicate model entries!');
+        setTimeout(() => setUploadMsg(''), 4000);
+      }
+    } catch (err) {
+      alert(`Failed to remove duplicates: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-16">
       
@@ -336,6 +363,13 @@ export default function PriceLookupPage() {
           </div>
           <div className="flex items-center gap-4">
             <button
+              onClick={handleRemoveDuplicates}
+              className="text-xs text-emerald-400 hover:underline flex items-center gap-1 font-semibold"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Remove Duplicates</span>
+            </button>
+            <button
               onClick={handleCleanGarbage}
               className="text-xs text-brand-orange hover:underline flex items-center gap-1"
             >
@@ -343,7 +377,7 @@ export default function PriceLookupPage() {
               <span>Purge Garbage Noise</span>
             </button>
             <div>
-              Showing <strong className="text-white">{items.length}</strong> matching models (Limit 2,000)
+              Showing <strong className="text-white">{items.length}</strong> unique models
             </div>
           </div>
         </div>
