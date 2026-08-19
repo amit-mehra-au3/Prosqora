@@ -16,7 +16,8 @@ import {
   Trash2,
   Building2,
   FileCheck,
-  Image
+  Image,
+  Clock
 } from 'lucide-react';
 
 export default function PriceLookupPage() {
@@ -26,6 +27,7 @@ export default function PriceLookupPage() {
   const [catalogues, setCatalogues] = useState([]);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
+  const [uploadTimeSec, setUploadTimeSec] = useState(0);
   const [copiedId, setCopiedId] = useState(null);
 
   const [brandName, setBrandName] = useState('Mitsubishi Electric');
@@ -76,7 +78,12 @@ export default function PriceLookupPage() {
     }
 
     setUploadingPdf(true);
-    setUploadMsg('Extracting models, descriptions & prices from document...');
+    setUploadTimeSec(0);
+    setUploadMsg('Extracting models, descriptions & prices from PDF document...');
+
+    const timer = setInterval(() => {
+      setUploadTimeSec((prev) => prev + 1);
+    }, 1000);
 
     const formData = new FormData();
     formData.append('pdfFile', file);
@@ -84,23 +91,21 @@ export default function PriceLookupPage() {
     formData.append('listTitle', listTitle);
 
     try {
-      const endpoint = file.name.toLowerCase().endsWith('.pdf')
-        ? '/api/price-lists/upload-pdf'
-        : '/api/price-lists/upload-pdf';
-
-      const res = await axios.post(endpoint, formData, {
+      const res = await axios.post('/api/price-lists/upload-pdf', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
       if (res.data.success) {
-        setUploadMsg(`✅ ${res.data.message}`);
+        const durationSec = res.data.durationSeconds || uploadTimeSec;
+        setUploadMsg(`✅ ${res.data.message} (Time Taken: ${durationSec}s)`);
         await fetchCatalogues();
         await fetchPriceItems(searchQuery);
-        setTimeout(() => setUploadMsg(''), 4000);
+        setTimeout(() => setUploadMsg(''), 6000);
       }
     } catch (err) {
       setUploadMsg(`❌ Upload failed: ${err.response?.data?.error || err.message}`);
     } finally {
+      clearInterval(timer);
       setUploadingPdf(false);
     }
   };
@@ -115,7 +120,12 @@ export default function PriceLookupPage() {
     }
 
     setUploadingPdf(true);
+    setUploadTimeSec(0);
     setUploadMsg(`Processing ${files.length} price list image(s) via Tesseract OCR Engine...`);
+
+    const timer = setInterval(() => {
+      setUploadTimeSec((prev) => prev + 1);
+    }, 1000);
 
     const formData = new FormData();
     files.forEach((file) => {
@@ -130,14 +140,16 @@ export default function PriceLookupPage() {
       });
 
       if (res.data.success) {
-        setUploadMsg(`✅ ${res.data.message}`);
+        const durationSec = res.data.durationSeconds || uploadTimeSec;
+        setUploadMsg(`✅ ${res.data.message} (Time Taken: ${durationSec}s)`);
         await fetchCatalogues();
         await fetchPriceItems(searchQuery);
-        setTimeout(() => setUploadMsg(''), 5000);
+        setTimeout(() => setUploadMsg(''), 6000);
       }
     } catch (err) {
       setUploadMsg(`❌ Image OCR Upload failed: ${err.response?.data?.error || err.message}`);
     } finally {
+      clearInterval(timer);
       setUploadingPdf(false);
     }
   };
@@ -218,9 +230,17 @@ export default function PriceLookupPage() {
       </div>
 
       {uploadMsg && (
-        <div className={`p-4 rounded-xl text-xs font-semibold flex items-center gap-2 ${uploadMsg.includes('❌') ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'}`}>
-          <CheckCircle className="w-4 h-4 shrink-0" />
-          <span>{uploadMsg}</span>
+        <div className={`p-4 rounded-xl text-xs font-semibold flex items-center justify-between gap-2 ${uploadMsg.includes('❌') ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'}`}>
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 shrink-0" />
+            <span>{uploadMsg}</span>
+          </div>
+          {uploadingPdf && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-industrial-900/80 text-brand-orange border border-brand-orange/30 font-mono text-xs animate-pulse shrink-0">
+              <Clock className="w-3.5 h-3.5" />
+              <span>Elapsed: {uploadTimeSec}s</span>
+            </div>
+          )}
         </div>
       )}
 

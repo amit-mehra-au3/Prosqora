@@ -84,6 +84,7 @@ router.get('/search', async (req, res) => {
  * POST /api/price-lists/upload-pdf
  */
 router.post('/upload-pdf', upload.single('pdfFile'), async (req, res) => {
+  const startTime = Date.now();
   try {
     await ensurePriceListTablesExist();
     const userId = req.user.user_id;
@@ -131,11 +132,14 @@ router.post('/upload-pdf', upload.single('pdfFile'), async (req, res) => {
       }
     }
 
+    const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
+
     res.json({
       success: true,
       listId,
-      message: `Successfully extracted and imported ${items.length} models and prices from PDF!`,
+      message: `Successfully extracted and imported ${items.length} models and prices from PDF in ${durationSec}s!`,
       totalItems: items.length,
+      durationSeconds: parseFloat(durationSec),
       items
     });
   } catch (err) {
@@ -149,6 +153,7 @@ router.post('/upload-pdf', upload.single('pdfFile'), async (req, res) => {
  * POST /api/price-lists/upload-images
  */
 router.post('/upload-images', upload.array('imageFiles', 500), async (req, res) => {
+  const startTime = Date.now();
   try {
     await ensurePriceListTablesExist();
     const userId = req.user.user_id;
@@ -208,12 +213,15 @@ router.post('/upload-images', upload.array('imageFiles', 500), async (req, res) 
       }
     }
 
+    const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
+
     res.json({
       success: true,
       listId,
-      message: `Successfully processed ${req.files.length} images via OCR and imported ${totalExtractedItems.length} model prices!`,
+      message: `Successfully processed ${req.files.length} images via OCR and imported ${totalExtractedItems.length} model prices in ${durationSec}s!`,
       totalFiles: req.files.length,
       totalItems: totalExtractedItems.length,
+      durationSeconds: parseFloat(durationSec),
       items: totalExtractedItems
     });
   } catch (err) {
