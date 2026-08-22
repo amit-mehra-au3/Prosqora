@@ -664,7 +664,7 @@ router.get('/email-campaigns/:id', async (req, res) => {
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
     const logs = await getAll(
-      `SELECT * FROM email_logs WHERE campaign_id = ? AND user_id = ? ORDER BY id ASC`,
+      `SELECT id, campaign_id, lead_id, user_id, recipient_email, company_name, contact_name, subject, status, error_message, is_test_mode, sent_at FROM email_logs WHERE campaign_id = ? AND user_id = ? ORDER BY id ASC LIMIT 500`,
       [campaign.campaign_id, req.user.user_id]
     );
 
