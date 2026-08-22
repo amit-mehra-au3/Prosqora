@@ -286,12 +286,29 @@ export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
           </button>
 
           <button
-            onClick={() => setShowComposerModal(true)}
-            disabled={selectedIds.length === 0}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-orange hover:bg-orange-600 disabled:opacity-40 disabled:hover:bg-brand-orange text-xs font-bold text-white shadow-lg shadow-brand-orange/20 transition-all"
+            onClick={() => {
+              const emailIds = allLeads.filter((l) => l.email && l.email.trim() && l.email.includes('@')).map((l) => l.id);
+              setSelectedIds(emailIds);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-brand-orange font-bold text-xs border border-industrial-700 transition-colors"
+            title="Select all leads that have an available email address"
+          >
+            <CheckSquare className="w-3.5 h-3.5" />
+            <span>Select All With Email</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (selectedIds.length === 0) {
+                const emailIds = allLeads.filter((l) => l.email && l.email.trim() && l.email.includes('@')).map((l) => l.id);
+                setSelectedIds(emailIds);
+              }
+              setShowComposerModal(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-orange hover:bg-orange-600 text-xs font-bold text-white shadow-lg shadow-brand-orange/20 transition-all"
           >
             <Send className="w-4 h-4" />
-            <span>✉ Send Email ({selectedIds.length})</span>
+            <span>✉ Send Email ({selectedIds.length > 0 ? selectedIds.length : 'All Email Leads'})</span>
           </button>
 
           {isAdmin && (

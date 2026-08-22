@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import CampaignProgressModal from '../components/CampaignProgressModal';
+import CampaignComposerModal from '../components/CampaignComposerModal';
 import GmailSendingCapacityCard from '../components/GmailSendingCapacityCard';
 import {
   Send,
@@ -14,14 +15,17 @@ import {
   Sparkles,
   FlaskConical,
   RefreshCw,
-  Sliders
+  Plus
 } from 'lucide-react';
 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState([]);
   const [capacity, setCapacity] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Modal States
   const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [showComposerModal, setShowComposerModal] = useState(false);
 
   useEffect(() => {
     fetchCampaigns();
@@ -69,13 +73,23 @@ export default function CampaignsPage() {
           </p>
         </div>
 
-        <button
-          onClick={fetchCampaigns}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-white font-bold text-xs border border-industrial-700 transition-all shrink-0"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Refresh Campaigns</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowComposerModal(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-orange hover:bg-orange-600 text-white font-extrabold text-xs shadow-lg shadow-brand-orange/20 transition-all shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Start New Campaign</span>
+          </button>
+
+          <button
+            onClick={fetchCampaigns}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-white font-bold text-xs border border-industrial-700 transition-all shrink-0"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Gmail Sending Capacity Card */}
@@ -88,12 +102,19 @@ export default function CampaignsPage() {
         {loading ? (
           <div className="p-12 text-center text-xs text-industrial-400">Loading campaign history...</div>
         ) : campaigns.length === 0 ? (
-          <div className="p-12 text-center space-y-3">
-            <Mail className="w-10 h-10 text-industrial-500 mx-auto" />
+          <div className="p-12 text-center space-y-4">
+            <Mail className="w-12 h-12 text-brand-orange mx-auto" />
             <h3 className="text-base font-bold text-white">No Email Campaigns Launched Yet</h3>
             <p className="text-xs text-industrial-400 max-w-md mx-auto">
-              Select leads from the All Leads page and click "✉ Send Email" to create your first Gmail outreach campaign.
+              Click the button below to compose and start your bulk email campaign for all leads with available emails.
             </p>
+            <button
+              onClick={() => setShowComposerModal(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-orange hover:bg-orange-600 text-white font-extrabold text-xs shadow-lg shadow-brand-orange/20 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Start First Email Campaign</span>
+            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -150,6 +171,7 @@ export default function CampaignsPage() {
         )}
       </div>
 
+      {/* Campaign Progress Modal */}
       {selectedCampaign && (
         <CampaignProgressModal
           campaign={selectedCampaign}
@@ -158,6 +180,18 @@ export default function CampaignsPage() {
             fetchCampaigns();
           }}
           onCampaignUpdated={() => fetchCampaigns()}
+        />
+      )}
+
+      {/* Campaign Composer Modal (New Campaign) */}
+      {showComposerModal && (
+        <CampaignComposerModal
+          onClose={() => setShowComposerModal(false)}
+          onCampaignCreated={(camp) => {
+            setShowComposerModal(false);
+            setSelectedCampaign(camp);
+            fetchCampaigns();
+          }}
         />
       )}
 

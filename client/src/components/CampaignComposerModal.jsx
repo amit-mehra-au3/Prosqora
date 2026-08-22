@@ -16,15 +16,21 @@ import {
   RefreshCw,
   FlaskConical,
   FileText,
-  UserCheck
+  UserCheck,
+  CheckSquare,
+  Square,
+  Users
 } from 'lucide-react';
 
 export default function CampaignComposerModal({
-  selectedLeadIds,
+  selectedLeadIds = [],
   onClose,
   onCampaignCreated,
   gmailStatus = {}
 }) {
+  const [allLeadsList, setAllLeadsList] = useState([]);
+  const [activeLeadIds, setActiveLeadIds] = useState(selectedLeadIds || []);
+
   const [templates, setTemplates] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [campaignName, setCampaignName] = useState('');
@@ -34,7 +40,7 @@ export default function CampaignComposerModal({
 
 Greetings from {{business_name}}.
 
-We are engaged in the supply of Industrial Automation Products & Components for manufacturing industries, machine builders, system integrators, and industrial applications.
+We deal in Industrial Automation Products & Components for manufacturing industries, machine builders, system integrators, and industrial applications.
 
 Our product range includes:
 • PLC & PLC Modules
@@ -42,15 +48,11 @@ Our product range includes:
 • AC Drives / VFDs
 • Servo Motors & Servo Drives
 • Sensors & Switches
-• Contactors, Relays & Protection Devices
-• Industrial Automation Components
-• Other Electrical & Automation Products
+• Contactors, Relays & Switchgear
 
 We can assist with product selection, model identification, competitive quotations, and sourcing support based on your requirement.
 
-If you have any current or upcoming requirement, please feel free to share your BOM, model numbers, specifications, or enquiry with us. We will be happy to provide a suitable quotation.
-
-Looking forward to the opportunity to work with your organization.
+If you have any current or upcoming requirement, please reply with your Brand, Part Number, and Quantity. We will be happy to provide a suitable quotation.
 
 Best Regards,
 {{sender_name}}
@@ -65,7 +67,7 @@ Email: {{email}}`);
   const [allowPreviouslyContacted, setAllowPreviouslyContacted] = useState(false);
   const [isTestMode, setIsTestMode] = useState(false);
   const [testEmail, setTestEmail] = useState('amautomationtrading@gmail.com');
-  const [dailyLimit, setDailyLimit] = useState(100);
+  const [dailyLimit, setDailyLimit] = useState(499);
 
   const [creating, setCreating] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -77,27 +79,60 @@ Email: {{email}}`);
   const [testResultMsg, setTestResultMsg] = useState('');
 
   useEffect(() => {
-    fetchTemplates();
-    fetchAudit();
-  }, [selectedLeadIds, allowPreviouslyContacted, isTestMode, testEmail]);
+    fetchLeadsAndTemplates();
+  }, []);
 
-  const fetchTemplates = async () => {
+  useEffect(() => {
+    if (activeLeadIds.length > 0) {
+      fetchAudit(activeLeadIds);
+    } else {
+      setAudit(null);
+    }
+  }, [activeLeadIds, allowPreviouslyContacted, isTestMode, testEmail]);
+
+  const fetchLeadsAndTemplates = async () => {
     try {
-      const res = await axios.get('/api/email-templates');
-      if (res.data.success) {
-        setTemplates(res.data.templates);
-        const def = res.data.templates.find((t) => t.is_default) || res.data.templates[0];
+      const [leadsRes, tplRes] = await Promise.all([
+        axios.get('/api/leads?limit=3000'),
+        axios.get('/api/email-templates')
+      ]);
+
+      if (leadsRes.data.success || Array.isArray(leadsRes.data.leads)) {
+        const leads = leadsRes.data.leads || [];
+        setAllLeadsList(leads);
+
+        // If no lead IDs were selected prior, auto-select all leads with valid email
+        if (!selectedLeadIds || selectedLeadIds.length === 0) {
+          const emailLeadIds = leads
+            .filter((l) => l.email && l.email.trim() && l.email.includes('@'))
+            .map((l) => l.id);
+          setActiveLeadIds(emailLeadIds);
+        } else {
+          setActiveLeadIds(selectedLeadIds);
+        }
+      }
+
+      if (tplRes.data.success) {
+        setTemplates(tplRes.data.templates);
+        const def = tplRes.data.templates.find((t) => t.is_default) || tplRes.data.templates[0];
         if (def) {
           setSelectedTemplateId(def.id);
+          if (def.subject) setSubject(def.subject);
+          if (def.body) setBody(def.body);
+          if (def.business_card_image) setBusinessCardImage(def.business_card_image);
         }
       }
     } catch (err) {}
   };
 
-  const fetchAudit = async () => {
+  const fetchAudit = async (leadIdsToAudit = activeLeadIds) => {
+    if (!leadIdsToAudit || leadIdsToAudit.length === 0) {
+      setAudit(null);
+      return;
+    }
     try {
       const res = await axios.post('/api/email-campaigns/audit', {
-        leadIds: selectedLeadIds,
+        leadIds: leadIdsToAudit,
         allowPreviouslyContacted,
         isTestMode,
         testEmail
@@ -106,6 +141,22 @@ Email: {{email}}`);
         setAudit(res.data.audit);
       }
     } catch (err) {}
+  };
+
+  const selectAllEmailLeads = () => {
+    const emailLeadIds = allLeadsList
+      .filter((l) => l.email && l.email.trim() && l.email.includes('@'))
+      .map((l) => l.id);
+    setActiveLeadIds(emailLeadIds);
+  };
+
+  const selectAllLeads = () => {
+    const allIds = allLeadsList.map((l) => l.id);
+    setActiveLeadIds(allIds);
+  };
+
+  const clearSelection = () => {
+    setActiveLeadIds([]);
   };
 
   const handleTemplateChange = (e) => {
@@ -142,13 +193,12 @@ Email: {{email}}`);
     reader.readAsDataURL(file);
   };
 
-  const handleRemoveImage = () => {
-    setBusinessCardImage('');
-  };
-
   const handleStartCampaignSubmit = async (e) => {
     e.preventDefault();
-    if (!audit || audit.validCount === 0) return;
+    if (activeLeadIds.length === 0) {
+      alert('Please select at least one recipient lead to start the email campaign.');
+      return;
+    }
 
     setCreating(true);
     setErrorMessage('');
@@ -159,7 +209,7 @@ Email: {{email}}`);
         subject,
         body,
         businessCardImage: attachBusinessCard ? businessCardImage : '',
-        leadIds: selectedLeadIds,
+        leadIds: activeLeadIds,
         allowPreviouslyContacted,
         isTestMode,
         testEmail,
@@ -169,7 +219,7 @@ Email: {{email}}`);
       if (createRes.data.success) {
         const campaign = createRes.data.campaign;
         await axios.post(`/api/email-campaigns/${campaign.campaign_id}/start`);
-        onCampaignCreated(campaign);
+        if (onCampaignCreated) onCampaignCreated(campaign);
       }
     } catch (err) {
       setErrorMessage(err.response?.data?.error || 'Failed to start email campaign.');
@@ -182,7 +232,6 @@ Email: {{email}}`);
     setSendingTestModal(true);
     setTestResultMsg('');
     try {
-      // Substitute preview variables for test run
       const dummyLead = {
         company_name: 'Sample Industrial Client',
         contact_person: 'Rahul Sharma',
@@ -217,9 +266,8 @@ Email: {{email}}`);
     }
   };
 
-  const estimatedMinMinutes = audit ? Math.ceil((audit.validCount * 9.5) / 60) : 0;
+  const totalWithEmail = allLeadsList.filter((l) => l.email && l.email.trim() && l.email.includes('@')).length;
 
-  // Real-time Preview Text Engine
   const previewBody = body
     .replace(/\{\{\s*contact_name\s*\}\}/gi, 'Rahul Sharma')
     .replace(/\{\{\s*company_name\s*\}\}/gi, 'ABC Robotics & Automation Ltd')
@@ -242,9 +290,9 @@ Email: {{email}}`);
               <Mail className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-extrabold text-white text-base">Send B2B Email Campaign — AM Automation Trading</h2>
+              <h2 className="font-extrabold text-white text-base">Launch B2B Email Campaign — AM Automation Trading</h2>
               <p className="text-xs text-industrial-400">
-                Compose, personalize, preview, and send Gmail outreach to {selectedLeadIds.length} selected leads.
+                Compose, select leads, preview, and start bulk outreach through connected official Gmail API.
               </p>
             </div>
           </div>
@@ -253,251 +301,223 @@ Email: {{email}}`);
           </button>
         </div>
 
-        {/* Modal Main Split Body (Left Editor, Right Live Preview) */}
+        {/* Lead Selection Quick Bar */}
+        <div className="p-3.5 bg-industrial-950 border-b border-industrial-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
+          <div className="flex items-center gap-2 text-industrial-300">
+            <Users className="w-4 h-4 text-brand-orange" />
+            <span>
+              Recipients Selected: <strong className="text-white font-bold">{activeLeadIds.length}</strong> / {allLeadsList.length} total leads
+            </span>
+          </div>
+
+          {/* Quick Lead Selection Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={selectAllEmailLeads}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-orange/20 hover:bg-brand-orange/30 text-brand-orange font-bold border border-brand-orange/40 transition-all"
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              <span>Select All With Email ({totalWithEmail})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={selectAllLeads}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-industrial-800 hover:bg-industrial-700 text-industrial-300 font-bold border border-industrial-700 transition-all"
+            >
+              <span>Select All ({allLeadsList.length})</span>
+            </button>
+
+            {activeLeadIds.length > 0 && (
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="px-3 py-1.5 rounded-lg bg-industrial-900 hover:bg-industrial-800 text-industrial-400 font-bold border border-industrial-800 transition-all"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Modal Main Split Body */}
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12">
           
           {/* LEFT PANE: CONTROLS & EDITOR (Col 7) */}
           <form onSubmit={handleStartCampaignSubmit} className="lg:col-span-7 overflow-y-auto p-5 space-y-5 border-r border-industrial-800">
             
             {errorMessage && (
-              <div className="p-3 bg-red-500/20 border border-red-500/40 rounded-xl text-red-300 text-xs flex items-center gap-2">
+              <div className="p-3 bg-red-500/20 border border-red-500/40 rounded-xl text-red-400 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{errorMessage}</span>
               </div>
             )}
 
-            {/* From & Checklist Status Bar */}
-            <div className="p-3 bg-industrial-950 rounded-xl border border-industrial-800 space-y-2 text-xs">
-              <div className="flex items-center justify-between border-b border-industrial-800/80 pb-2">
-                <div className="flex items-center gap-2 font-mono">
-                  <span className="text-industrial-400 font-semibold uppercase text-[10px]">From:</span>
-                  <span className="font-bold text-white">AM Automation Trading</span>
-                  <span className="text-brand-orange">&lt;amautomationtrading@gmail.com&gt;</span>
-                </div>
+            {/* Campaign Name & Template Selector */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-industrial-300">Campaign Name</label>
+                <input
+                  type="text"
+                  value={campaignName}
+                  onChange={(e) => setCampaignName(e.target.value)}
+                  placeholder={`AM Automation Trading Outreach (${new Date().toLocaleDateString()})`}
+                  className="industrial-input w-full text-xs font-semibold"
+                />
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] font-mono pt-1">
-                <div>
-                  <span className="text-industrial-400">Gmail: </span>
-                  {gmailStatus.connected ? <span className="text-emerald-400 font-bold">✓ Connected</span> : <span className="text-amber-300 font-bold">⏱ Pending</span>}
-                </div>
-                <div>
-                  <span className="text-industrial-400">Account: </span>
-                  <span className="text-white font-bold">Authorized</span>
-                </div>
-                <div>
-                  <span className="text-industrial-400">Limits: </span>
-                  <span className="text-white font-bold">{dailyLimit}/day</span>
-                </div>
-                <div>
-                  <span className="text-industrial-400">Delay: </span>
-                  <span className="text-brand-orange font-bold">7–12s</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Template Dropdown & Subject */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-              <div className="md:col-span-5 space-y-1">
-                <label className="text-xs font-semibold text-industrial-300">Select Template</label>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-industrial-300">Load Email Template</label>
                 <select
                   value={selectedTemplateId}
                   onChange={handleTemplateChange}
-                  className="industrial-input w-full text-xs font-medium"
+                  className="industrial-input w-full text-xs font-semibold"
                 >
-                  {templates.map((tpl) => (
-                    <option key={tpl.id} value={tpl.id}>
-                      {tpl.name} {tpl.is_default ? '(Default)' : ''}
+                  <option value="">-- Select Saved Template --</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} {t.is_default ? '(Default)' : ''}
                     </option>
                   ))}
                 </select>
               </div>
-
-              <div className="md:col-span-7 space-y-1">
-                <label className="text-xs font-semibold text-industrial-300">Subject Line</label>
-                <input
-                  type="text"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className="industrial-input w-full text-xs font-medium"
-                  placeholder="Subject line..."
-                  required
-                />
-              </div>
             </div>
 
-            {/* Personalization Variable Insert Pills */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-industrial-300 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-brand-orange" />
-                  <span>Insert Personalization Tag</span>
-                </label>
-                <span className="text-[10px] text-industrial-400">Click to add variable to body</span>
-              </div>
+            {/* Subject Line Input */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-industrial-300">Subject Line</label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="industrial-input w-full text-xs font-mono font-medium text-white"
+                required
+              />
+            </div>
 
+            {/* Variable Chips */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-industrial-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-brand-orange" />
+                <span>Personalization Variables</span>
+              </label>
               <div className="flex flex-wrap items-center gap-1.5">
-                {[
-                  { tag: '{{contact_name}}', label: 'Contact Name' },
-                  { tag: '{{company_name}}', label: 'Company Name' },
-                  { tag: '{{business_name}}', label: 'Business Name' },
-                  { tag: '{{sender_name}}', label: 'Sender Name' },
-                  { tag: '{{phone}}', label: 'Phone' },
-                  { tag: '{{email}}', label: 'Email' }
-                ].map((item) => (
+                {['{{contact_name}}', '{{company_name}}', '{{business_name}}', '{{sender_name}}', '{{phone}}', '{{email}}'].map((tag) => (
                   <button
-                    key={item.tag}
+                    key={tag}
                     type="button"
-                    onClick={() => insertVariable(item.tag)}
-                    className="px-2.5 py-1 rounded-lg bg-industrial-800 hover:bg-industrial-700 border border-industrial-700 text-[11px] font-mono text-brand-orange font-semibold transition-colors"
+                    onClick={() => insertVariable(tag)}
+                    className="px-2.5 py-1 rounded-lg bg-industrial-900 hover:bg-industrial-800 border border-industrial-800 text-[11px] font-mono text-brand-orange font-bold"
                   >
-                    + {item.tag}
+                    + {tag}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Rich Email Content Editor */}
+            {/* Email Body Text Area */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-industrial-300">Email Content</label>
+              <label className="text-xs font-bold text-industrial-300">Email Body HTML / Content</label>
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                rows={10}
-                className="industrial-input w-full text-xs font-mono leading-relaxed p-3"
-                placeholder="Write your email body here..."
+                rows={9}
+                className="industrial-input w-full text-xs font-mono p-3 leading-relaxed"
                 required
               />
             </div>
 
-            {/* Business Card / Signature Image Section */}
-            <div className="p-4 bg-industrial-950/80 rounded-xl border border-industrial-800 space-y-3">
+            {/* Business Card Upload */}
+            <div className="p-4 bg-industrial-950 rounded-xl border border-industrial-800 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4 text-brand-orange" />
-                  <span className="font-bold text-white text-xs">Business Card / Signature Image</span>
-                </div>
-
-                {businessCardImage && (
-                  <label className="flex items-center gap-1.5 text-[11px] text-industrial-300 font-semibold cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={attachBusinessCard}
-                      onChange={(e) => setAttachBusinessCard(e.target.checked)}
-                      className="rounded border-industrial-700 text-brand-orange focus:ring-0"
-                    />
-                    <span>Include in Email Footer</span>
-                  </label>
-                )}
+                <span className="font-bold text-white text-xs">Attach Business Card Signature</span>
+                <label className="flex items-center gap-2 text-xs text-industrial-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={attachBusinessCard}
+                    onChange={(e) => setAttachBusinessCard(e.target.checked)}
+                    className="rounded border-industrial-700 text-brand-orange focus:ring-0"
+                  />
+                  <span>Attach to email</span>
+                </label>
               </div>
 
-              {businessCardImage ? (
-                <div className="flex items-center gap-4 p-3 bg-industrial-900 rounded-lg border border-industrial-800">
-                  <img
-                    src={businessCardImage}
-                    alt="Uploaded Business Card"
-                    className="w-32 h-18 object-cover rounded-lg border border-industrial-700 shadow-md"
-                  />
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-semibold text-emerald-400 block">✓ Business Card Loaded</span>
-                    <div className="flex items-center gap-2">
-                      <label className="px-3 py-1 rounded bg-industrial-800 hover:bg-industrial-700 text-white font-bold text-[11px] cursor-pointer border border-industrial-700">
-                        Replace
-                        <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                      </label>
+              {attachBusinessCard && (
+                <div>
+                  {businessCardImage ? (
+                    <div className="flex items-center gap-4">
+                      <img src={businessCardImage} alt="Card" className="w-32 h-18 object-cover rounded border border-industrial-700" />
                       <button
                         type="button"
-                        onClick={handleRemoveImage}
-                        className="px-3 py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400 font-bold text-[11px] border border-red-500/30"
+                        onClick={() => setBusinessCardImage('')}
+                        className="px-3 py-1 rounded bg-red-500/20 text-red-400 font-bold text-xs"
                       >
-                        Remove
+                        Remove Image
                       </button>
                     </div>
-                  </div>
+                  ) : (
+                    <label className="flex items-center gap-2 p-3 bg-industrial-900 rounded-lg border border-dashed border-industrial-700 cursor-pointer text-xs font-semibold text-industrial-300 hover:text-white">
+                      <Upload className="w-4 h-4 text-brand-orange" />
+                      <span>Upload Business Card Image (PNG, JPG)</span>
+                      <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                    </label>
+                  )}
                 </div>
-              ) : (
-                <label className="flex flex-col items-center justify-center p-4 bg-industrial-900/60 hover:bg-industrial-900 border border-dashed border-industrial-700 hover:border-brand-orange rounded-xl cursor-pointer transition-colors text-center">
-                  <Upload className="w-5 h-5 text-industrial-400 mb-1" />
-                  <span className="text-xs font-semibold text-industrial-200">Upload Business Card Image</span>
-                  <span className="text-[10px] text-industrial-400 mt-0.5">PNG, JPG, WEBP up to 2MB</span>
-                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                </label>
               )}
             </div>
 
-            {/* Recipient Audit Summary Card */}
+            {/* Pre-Flight Audit Summary */}
             {audit && (
-              <div className="p-3 bg-industrial-950/60 rounded-xl border border-industrial-800 space-y-2">
-                <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                  <div className="p-2 bg-industrial-900 rounded-lg">
-                    <span className="text-[10px] text-industrial-400 block font-semibold">Total</span>
-                    <span className="font-extrabold text-white text-sm">{audit.totalSelected}</span>
-                  </div>
-                  <div className="p-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                    <span className="text-[10px] text-emerald-400 block font-semibold">Valid</span>
-                    <span className="font-extrabold text-emerald-400 text-sm">{audit.validCount}</span>
-                  </div>
-                  <div className="p-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
-                    <span className="text-[10px] text-amber-300 block font-semibold">Skipped</span>
-                    <span className="font-extrabold text-amber-300 text-sm">{audit.totalSkipped}</span>
-                  </div>
-                  <div className="p-2 bg-industrial-900 rounded-lg">
-                    <span className="text-[10px] text-industrial-400 block font-semibold">Est. Time</span>
-                    <span className="font-extrabold text-brand-orange text-xs">~{estimatedMinMinutes}m</span>
-                  </div>
+              <div className="p-4 bg-industrial-950 rounded-xl border border-industrial-800 space-y-2 text-xs font-mono">
+                <div className="flex items-center justify-between text-white font-bold">
+                  <span>Pre-Flight Recipient Audit</span>
+                  <span className="text-emerald-400 font-extrabold">{audit.validCount} Valid Leads Ready</span>
                 </div>
-
-                <div className="flex items-center justify-between pt-1 text-xs">
-                  <label className="flex items-center gap-1.5 text-[11px] text-industrial-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={allowPreviouslyContacted}
-                      onChange={(e) => setAllowPreviouslyContacted(e.target.checked)}
-                      className="rounded border-industrial-700 text-brand-orange"
-                    />
-                    <span>Allow previously contacted leads (last 14 days)</span>
-                  </label>
-
-                  <label className="flex items-center gap-1.5 text-[11px] text-industrial-300 cursor-pointer font-bold">
-                    <input
-                      type="checkbox"
-                      checked={isTestMode}
-                      onChange={(e) => setIsTestMode(e.target.checked)}
-                      className="rounded border-industrial-700 text-brand-orange"
-                    />
-                    <span>Enable Test Mode</span>
-                  </label>
+                <div className="grid grid-cols-3 gap-2 text-center pt-1 text-[11px]">
+                  <div className="p-2 bg-industrial-900 rounded border border-industrial-800">
+                    <span className="text-industrial-400 block">Selected</span>
+                    <strong className="text-white">{audit.totalSelected}</strong>
+                  </div>
+                  <div className="p-2 bg-industrial-900 rounded border border-industrial-800">
+                    <span className="text-emerald-400 block">Valid</span>
+                    <strong className="text-emerald-400">{audit.validCount}</strong>
+                  </div>
+                  <div className="p-2 bg-industrial-900 rounded border border-industrial-800">
+                    <span className="text-amber-300 block">Skipped</span>
+                    <strong className="text-amber-300">{audit.totalSkipped}</strong>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Form Submit & Test Action Bar */}
-            <div className="pt-2 flex items-center justify-between border-t border-industrial-800">
+            {/* Submit Action Buttons */}
+            <div className="flex items-center justify-between pt-4 border-t border-industrial-800">
               <button
                 type="button"
                 onClick={() => setShowTestModal(true)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-emerald-400 font-bold text-xs border border-industrial-700"
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-industrial-200 font-bold text-xs border border-industrial-700"
               >
-                <FlaskConical className="w-4 h-4" />
+                <FlaskConical className="w-4 h-4 text-brand-orange" />
                 <span>Send Test Email</span>
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-industrial-300 font-semibold text-xs"
+                  className="px-4 py-2.5 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-industrial-300 font-bold text-xs"
                 >
                   Cancel
                 </button>
 
                 <button
                   type="submit"
-                  disabled={creating || !audit || audit.validCount === 0}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-orange hover:bg-orange-600 text-white font-bold text-xs shadow-lg shadow-brand-orange/20 transition-all disabled:opacity-50"
+                  disabled={creating || activeLeadIds.length === 0}
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-brand-orange hover:bg-orange-600 text-white font-extrabold text-xs shadow-lg shadow-brand-orange/20 transition-all disabled:opacity-50"
                 >
                   <Send className="w-4 h-4" />
-                  <span>{creating ? 'Initializing Queue...' : `Start Email Campaign (${audit ? audit.validCount : 0})`}</span>
+                  <span>{creating ? 'Initializing Queue...' : `START EMAIL CAMPAIGN (${audit ? audit.validCount : activeLeadIds.length})`}</span>
                 </button>
               </div>
             </div>
@@ -518,45 +538,24 @@ Email: {{email}}`);
 
             {/* Gmail Client Mock Window */}
             <div className="flex-1 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden flex flex-col text-slate-800 font-sans text-xs">
-              
-              {/* Gmail Window Header Bar */}
-              <div className="p-3 bg-slate-100 border-b border-slate-200 space-y-1.5">
-                <div className="flex items-center gap-2 font-semibold text-slate-700 text-[11px]">
-                  <span className="text-slate-400 uppercase text-[9px] font-bold">To:</span>
-                  <span className="font-mono bg-slate-200 px-2 py-0.5 rounded text-slate-800">Rahul Sharma &lt;purchase@abcrobotics.com&gt;</span>
-                </div>
-                <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
-                  <span className="text-slate-400 font-normal uppercase text-[9px]">Subject:</span>
-                  <span>{previewSubject || 'No Subject'}</span>
-                </div>
+              <div className="bg-slate-100 p-3 border-b border-slate-200 space-y-1">
+                <div className="font-bold text-slate-900 truncate">Subject: {previewSubject}</div>
+                <div className="text-slate-500 text-[11px]">From: AM Automation Trading &lt;amautomationtrading@gmail.com&gt;</div>
               </div>
 
-              {/* Gmail Message Body View */}
-              <div className="p-5 flex-1 overflow-y-auto space-y-4 leading-relaxed font-sans text-slate-800">
-                
-                <div className="whitespace-pre-wrap font-sans text-xs text-slate-800 leading-relaxed">
-                  {previewBody}
+              <div className="flex-1 p-4 overflow-y-auto leading-relaxed whitespace-pre-wrap text-slate-800">
+                <iframe
+                  title="Gmail Preview"
+                  srcDoc={previewBody}
+                  className="w-full min-h-[360px] border-0"
+                />
+              </div>
+
+              {attachBusinessCard && businessCardImage && (
+                <div className="p-3 bg-slate-50 border-t border-slate-200 text-center">
+                  <img src={businessCardImage} alt="Card" className="max-w-[320px] w-full rounded border border-slate-300 mx-auto" />
                 </div>
-
-                {/* Business Card Image in Preview */}
-                {attachBusinessCard && businessCardImage && (
-                  <div className="pt-4 border-t border-slate-200">
-                    <img
-                      src={businessCardImage}
-                      alt="Business Card Signature"
-                      className="max-w-[400px] w-full h-auto rounded-lg border border-slate-300 shadow-sm"
-                    />
-                  </div>
-                )}
-
-              </div>
-
-              {/* Gmail Footer Bar */}
-              <div className="p-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                <span>AM Automation Trading • Gmail API</span>
-                <span>Ready to Send</span>
-              </div>
-
+              )}
             </div>
           </div>
 
@@ -564,58 +563,44 @@ Email: {{email}}`);
 
       </div>
 
-      {/* TEST EMAIL MODAL */}
+      {/* Test Email Modal */}
       {showTestModal && (
-        <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="industrial-card w-full max-w-md p-6 space-y-4 shadow-2xl border-industrial-700">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="industrial-card max-w-md w-full p-6 space-y-4 border border-industrial-700">
             <div className="flex items-center justify-between border-b border-industrial-800 pb-3">
-              <div className="flex items-center gap-2 text-white font-bold text-sm">
-                <FlaskConical className="w-5 h-5 text-emerald-400" />
-                <span>Send Test Email</span>
-              </div>
-              <button onClick={() => setShowTestModal(false)} className="text-industrial-400 hover:text-white">
-                <X className="w-5 h-5" />
+              <h3 className="font-bold text-white text-sm">Send Gmail API Test Email</h3>
+              <button onClick={() => setShowTestModal(false)} className="p-1 rounded text-industrial-400 hover:text-white">
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-industrial-400">
-              Send the current HTML email template and business card signature to your test inbox via the real Gmail API.
-            </p>
+            {testResultMsg && (
+              <div className="p-3 bg-industrial-950 rounded-lg text-xs font-mono">
+                {testResultMsg}
+              </div>
+            )}
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-industrial-300">Test Recipient Email</label>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-industrial-300">Recipient Email</label>
               <input
                 type="email"
                 value={testModalEmail}
                 onChange={(e) => setTestModalEmail(e.target.value)}
                 className="industrial-input w-full text-xs font-mono"
-                placeholder="amautomationtrading@gmail.com"
-                required
               />
             </div>
 
-            {testResultMsg && (
-              <div className="p-3 bg-industrial-900 rounded-lg border border-industrial-800 text-xs font-mono text-industrial-200">
-                {testResultMsg}
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowTestModal(false)}
-                className="px-4 py-2 rounded-xl bg-industrial-800 text-industrial-300 font-semibold text-xs"
-              >
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => setShowTestModal(false)} className="px-4 py-2 rounded-xl bg-industrial-800 text-xs font-bold text-industrial-300">
                 Close
               </button>
               <button
                 type="button"
                 onClick={handleSendTestEmail}
                 disabled={sendingTestModal}
-                className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 font-bold text-white text-xs shadow-lg shadow-emerald-500/20"
+                className="px-5 py-2 rounded-xl bg-brand-orange hover:bg-orange-600 text-white font-bold text-xs"
               >
-                <Send className="w-4 h-4" />
-                <span>{sendingTestModal ? 'Sending...' : 'Send Test Email'}</span>
+                {sendingTestModal ? 'Sending...' : 'Send Test'}
               </button>
             </div>
           </div>
