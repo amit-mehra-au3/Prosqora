@@ -85,12 +85,13 @@ async function auditCampaignRecipients({ userId, leadIds, allowPreviouslyContact
       continue;
     }
 
-    // Check duplicate sent in last 14 days
-    if (!allowPreviouslyContacted && !isTestMode && email) {
+    // Check duplicate send to recipient in last 24h (or 14 days)
+    if (!isTestMode && email) {
       const isPostgres = process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgres');
+      const intervalStr = allowPreviouslyContacted ? '24 hours' : '14 days';
       const query = isPostgres
-        ? `SELECT id FROM email_logs WHERE user_id = $1 AND recipient_email = $2 AND status = 'Sent' AND sent_at >= NOW() - INTERVAL '14 days'`
-        : `SELECT id FROM email_logs WHERE user_id = ? AND recipient_email = ? AND status = 'Sent' AND sent_at >= datetime('now', '-14 days')`;
+        ? `SELECT id FROM email_logs WHERE user_id = $1 AND recipient_email = $2 AND status = 'Sent' AND sent_at >= NOW() - INTERVAL '${intervalStr}'`
+        : `SELECT id FROM email_logs WHERE user_id = ? AND recipient_email = ? AND status = 'Sent' AND sent_at >= datetime('now', '-${intervalStr}')`;
 
       const recentLog = await getRow(query, [userId, email]);
       if (recentLog) {
@@ -225,6 +226,30 @@ async function processNextCampaignEmail(campaignId) {
     campaignCountdownMap.delete(campaignId);
     console.log(`[CAMPAIGN QUEUE] Campaign ${campaignId} completed with status: ${finalStatus}`);
     return;
+  }
+
+  // 4. Check 24-Hour Duplicate Send Protection Rule (Max 1 send per recipient per 24 hours)
+  if (!campaign.is_test_mode && nextLogItem.recipient_email) {
+    const isPostgres = process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgres');
+    const recentQuery = isPostgres
+      ? `SELECT id, sent_at FROM email_logs WHERE user_id = $1 AND recipient_email = $2 AND status = 'Sent' AND sent_at >= NOW() - INTERVAL '24 hours' AND id != $3`
+      : `SELECT id, sent_at FROM email_logs WHERE user_id = ? AND recipient_email = ? AND status = 'Sent' AND sent_at >= datetime('now', '-24 hours') AND id != ?`;
+
+    const recent24hLog = await getRow(recentQuery, [campaign.user_id, nextLogItem.recipient_email, nextLogItem.id]);
+    if (recent24hLog) {
+      await runQuery(
+        `UPDATE email_logs SET status = 'Skipped', error_message = 'Already sent email in last 24 hours', sent_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [nextLogItem.id]
+      );
+      await runQuery(
+        `UPDATE email_campaigns SET skipped_count = skipped_count + 1, updated_at = CURRENT_TIMESTAMP WHERE campaign_id = ?`,
+        [campaignId]
+      );
+      console.log(`[CAMPAIGN QUEUE] Skipped duplicate send to ${nextLogItem.recipient_email} (Already contacted in last 24h)`);
+
+      // Immediately process next queue item without delay
+      return setTimeout(() => processNextCampaignEmail(campaignId), 100);
+    }
   }
 
   // Atomic Status Lock: Update status to 'Sending' so no parallel worker claims it
