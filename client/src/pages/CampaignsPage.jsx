@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import CampaignProgressModal from '../components/CampaignProgressModal';
+import GmailSendingCapacityCard from '../components/GmailSendingCapacityCard';
 import {
   Send,
   Mail,
@@ -12,11 +13,13 @@ import {
   ChevronRight,
   Sparkles,
   FlaskConical,
-  RefreshCw
+  RefreshCw,
+  Sliders
 } from 'lucide-react';
 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState([]);
+  const [capacity, setCapacity] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
 
@@ -30,6 +33,9 @@ export default function CampaignsPage() {
       const res = await axios.get('/api/email-campaigns');
       if (res.data.success) {
         setCampaigns(res.data.campaigns || []);
+        if (res.data.capacity) {
+          setCapacity(res.data.capacity);
+        }
       }
     } catch (e) {
       console.error('Failed to fetch campaigns:', e);
@@ -39,14 +45,16 @@ export default function CampaignsPage() {
   };
 
   const getStatusBadge = (status) => {
-    if (status === 'Running') return <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">🟢 Running</span>;
+    if (status === 'Running' || status === 'QUEUED') return <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">🟢 Running</span>;
     if (status === 'Paused') return <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">🟡 Paused</span>;
+    if (status === 'CAP_REACHED') return <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/30 text-amber-200 border border-amber-500/50">🔴 499 Cap Reached</span>;
+    if (status === 'GMAIL_LIMIT_REACHED') return <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-300 border border-red-500/40">⚠️ Gmail Limit</span>;
     if (status === 'Completed') return <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">✓ Completed</span>;
-    return <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-industrial-800 text-industrial-400">⏹ {status}</span>;
+    return <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-industrial-800 text-industrial-400 border border-industrial-700">⏹ {status}</span>;
   };
 
   return (
-    <div className="p-8 space-y-8 max-w-7xl mx-auto">
+    <div className="p-8 space-y-8 max-w-7xl mx-auto pb-20">
       
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -57,7 +65,7 @@ export default function CampaignsPage() {
           </div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight mt-1">Email Campaigns</h1>
           <p className="text-xs text-industrial-400 mt-0.5">
-            Monitor, manage, and review past and active B2B email campaigns for AM Automation Trading.
+            Monitor, manage, and review B2B email campaigns with 499/24h rolling safety cap protection.
           </p>
         </div>
 
@@ -69,6 +77,11 @@ export default function CampaignsPage() {
           <span>Refresh Campaigns</span>
         </button>
       </div>
+
+      {/* Gmail Sending Capacity Card */}
+      {capacity && (
+        <GmailSendingCapacityCard capacity={capacity} onRefresh={fetchCampaigns} />
+      )}
 
       {/* Campaigns Table Container */}
       <div className="industrial-card overflow-hidden">

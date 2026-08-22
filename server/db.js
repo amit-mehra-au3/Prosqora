@@ -564,6 +564,19 @@ const initDb = async () => {
     )
   `);
 
+  // 12. EMAIL SETTINGS TABLE
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS email_settings (
+      user_id TEXT PRIMARY KEY,
+      min_delay_sec INTEGER DEFAULT 2,
+      max_delay_sec INTEGER DEFAULT 5,
+      auto_resume INTEGER DEFAULT 1,
+      pause_on_quota_error INTEGER DEFAULT 1,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+    )
+  `);
+
   // Column migrations
   const alterColumns = [
     `ALTER TABLE leads ADD COLUMN user_id TEXT DEFAULT 'demo_user'`,

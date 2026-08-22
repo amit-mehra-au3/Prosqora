@@ -6,9 +6,13 @@ const { getAuthUrl, getTokensFromCode, validateOAuthCredentials, sendGmailMessag
 const {
   substituteVariables,
   auditCampaignRecipients,
+  getEmailSettings,
+  getSendingCapacity,
   startCampaignQueue,
   pauseCampaignQueue,
-  stopCampaignQueue
+  stopCampaignQueue,
+  clearCampaignQueue,
+  getCampaignCountdown
 } = require('../services/campaignQueue');
 
 // OAuth Callback with Strict Identity Verification
@@ -579,14 +583,71 @@ router.post('/email-campaigns/:id/stop', async (req, res) => {
   }
 });
 
-// 6. CAMPAIGNS LIST & LOGS ENDPOINTS
+router.post('/email-campaigns/:id/clear-queue', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const campaign = await getRow(`SELECT * FROM email_campaigns WHERE (campaign_id = ? OR id = ?) AND user_id = ?`, [id, id, req.user.user_id]);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    await clearCampaignQueue(campaign.campaign_id);
+    res.json({ success: true, message: 'Pending queue jobs cleared' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 6. GMAIL SENDING CAPACITY & SETTINGS ENDPOINTS
+router.get('/gmail/sending-capacity', async (req, res) => {
+  try {
+    const capacity = await getSendingCapacity(req.user.user_id);
+    res.json({ success: true, capacity });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/email-settings', async (req, res) => {
+  try {
+    const settings = await getEmailSettings(req.user.user_id);
+    res.json({ success: true, settings });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/email-settings', async (req, res) => {
+  try {
+    const { min_delay_sec, max_delay_sec, auto_resume, pause_on_quota_error } = req.body;
+    const minDelay = Math.max(1, parseInt(min_delay_sec) || 2);
+    const maxDelay = Math.max(minDelay, parseInt(max_delay_sec) || 5);
+
+    await runQuery(
+      `INSERT INTO email_settings (user_id, min_delay_sec, max_delay_sec, auto_resume, pause_on_quota_error, updated_at)
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(user_id) DO UPDATE SET
+         min_delay_sec = ?, max_delay_sec = ?, auto_resume = ?, pause_on_quota_error = ?, updated_at = CURRENT_TIMESTAMP`,
+      [
+        req.user.user_id, minDelay, maxDelay, auto_resume ? 1 : 0, pause_on_quota_error ? 1 : 0,
+        minDelay, maxDelay, auto_resume ? 1 : 0, pause_on_quota_error ? 1 : 0
+      ]
+    );
+
+    const updated = await getEmailSettings(req.user.user_id);
+    res.json({ success: true, settings: updated, message: 'Email sending settings saved successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 7. CAMPAIGNS LIST & LOGS ENDPOINTS
 router.get('/email-campaigns', async (req, res) => {
   try {
     const campaigns = await getAll(
       `SELECT * FROM email_campaigns WHERE user_id = ? ORDER BY id DESC`,
       [req.user.user_id]
     );
-    res.json({ success: true, campaigns });
+    const capacity = await getSendingCapacity(req.user.user_id);
+    res.json({ success: true, campaigns, capacity });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -607,7 +668,10 @@ router.get('/email-campaigns/:id', async (req, res) => {
       [campaign.campaign_id, req.user.user_id]
     );
 
-    res.json({ success: true, campaign, logs });
+    const capacity = await getSendingCapacity(req.user.user_id);
+    const countdown = getCampaignCountdown(campaign.campaign_id);
+
+    res.json({ success: true, campaign, logs, capacity, countdown });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
