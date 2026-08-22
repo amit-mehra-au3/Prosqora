@@ -1,3 +1,4 @@
+import { OFFICIAL_AM_BUSINESS_CARD } from '../utils/emailHtmlGenerator';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -60,7 +61,7 @@ Best Regards,
 Phone: {{phone}}
 Email: {{email}}`);
 
-  const [businessCardImage, setBusinessCardImage] = useState('');
+  const [businessCardImage, setBusinessCardImage] = useState(OFFICIAL_AM_BUSINESS_CARD);
   const [attachBusinessCard, setAttachBusinessCard] = useState(true);
 
   const [audit, setAudit] = useState(null);

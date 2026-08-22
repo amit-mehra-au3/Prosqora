@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 
 import {
+  OFFICIAL_AM_BUSINESS_CARD,
   getDefaultAmAutomationBlocks,
   generateEmailHtml,
   parseHtmlToBlocks,
@@ -50,7 +51,7 @@ export default function EmailTemplatesPage() {
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('');
   const [isDefault, setIsDefault] = useState(false);
-  const [businessCardImage, setBusinessCardImage] = useState('');
+  const [businessCardImage, setBusinessCardImage] = useState(OFFICIAL_AM_BUSINESS_CARD);
 
   // Builder Mode: 'visual' | 'html'
   const [editorMode, setEditorMode] = useState('visual');
