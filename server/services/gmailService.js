@@ -98,31 +98,71 @@ async function getTokensFromCode(code, req = null, customRedirectUri = '') {
 /**
  * Build RFC 2822 Base64URL encoded HTML & Text MIME message
  */
-function makeMimeMessage(to, from, subject, messageText, businessCardImage = '') {
-  // Convert line breaks and bullet points into clean B2B HTML
-  let formattedHtml = messageText
-    .split('\n\n')
-    .map(paragraph => {
-      if (paragraph.includes('•') || paragraph.includes('* ')) {
-        const items = paragraph.split('\n').map(line => line.replace(/^[\•\*\-]\s*/, '').trim()).filter(Boolean);
-        return `<ul style="margin: 8px 0; padding-left: 20px; color: #334155;">` +
-          items.map(item => `<li style="margin-bottom: 4px; line-height: 1.5;">${item}</li>`).join('') +
-          `</ul>`;
+function makeMimeMessage(to, from, subject, messageText = '', businessCardImage = '') {
+  const trimmed = (messageText || '').trim();
+  const isHtml = trimmed.toLowerCase().startsWith('<!doctype') ||
+                 trimmed.toLowerCase().startsWith('<html') ||
+                 trimmed.toLowerCase().startsWith('<table') ||
+                 trimmed.toLowerCase().startsWith('<div') ||
+                 trimmed.includes('</td>') ||
+                 trimmed.includes('</table>') ||
+                 trimmed.includes('</div>');
+
+  let fullHtmlBody = '';
+  let plainTextBody = '';
+
+  if (isHtml) {
+    let businessCardHtml = '';
+    if (businessCardImage && businessCardImage.trim() && !trimmed.includes(businessCardImage)) {
+      businessCardHtml = `
+        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center;">
+          <img src="${businessCardImage}" alt="AM Automation Trading Business Card" style="max-width: 460px; width: 100%; height: auto; border-radius: 8px; border: 1px solid #cbd5e1; box-shadow: 0 2px 8px rgba(0,0,0,0.06);" />
+        </div>
+      `;
+    }
+
+    if (businessCardHtml) {
+      if (trimmed.includes('</body>')) {
+        fullHtmlBody = trimmed.replace('</body>', `${businessCardHtml}</body>`);
+      } else {
+        fullHtmlBody = trimmed + businessCardHtml;
       }
-      return `<p style="margin: 0 0 12px 0; line-height: 1.6; color: #1e293b;">${paragraph.replace(/\n/g, '<br/>')}</p>`;
-    })
-    .join('');
+    } else {
+      fullHtmlBody = trimmed;
+    }
 
-  let businessCardHtml = '';
-  if (businessCardImage && businessCardImage.trim()) {
-    businessCardHtml = `
-      <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
-        <img src="${businessCardImage}" alt="AM Automation Trading Business Card" style="max-width: 460px; width: 100%; height: auto; border-radius: 8px; border: 1px solid #cbd5e1; box-shadow: 0 2px 8px rgba(0,0,0,0.06);" />
-      </div>
-    `;
-  }
+    // Strip HTML tags for plain text fallback
+    plainTextBody = trimmed.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                           .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                           .replace(/<[^>]+>/g, ' ')
+                           .replace(/\s+/g, ' ')
+                           .trim();
+  } else {
+    // Legacy plain text formatting
+    plainTextBody = messageText;
+    let formattedHtml = messageText
+      .split('\n\n')
+      .map(paragraph => {
+        if (paragraph.includes('•') || paragraph.includes('* ')) {
+          const items = paragraph.split('\n').map(line => line.replace(/^[\•\*\-]\s*/, '').trim()).filter(Boolean);
+          return `<ul style="margin: 8px 0; padding-left: 20px; color: #334155;">` +
+            items.map(item => `<li style="margin-bottom: 4px; line-height: 1.5;">${item}</li>`).join('') +
+            `</ul>`;
+        }
+        return `<p style="margin: 0 0 12px 0; line-height: 1.6; color: #1e293b;">${paragraph.replace(/\n/g, '<br/>')}</p>`;
+      })
+      .join('');
 
-  const fullHtmlBody = `
+    let businessCardHtml = '';
+    if (businessCardImage && businessCardImage.trim()) {
+      businessCardHtml = `
+        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
+          <img src="${businessCardImage}" alt="AM Automation Trading Business Card" style="max-width: 460px; width: 100%; height: auto; border-radius: 8px; border: 1px solid #cbd5e1; box-shadow: 0 2px 8px rgba(0,0,0,0.06);" />
+        </div>
+      `;
+    }
+
+    fullHtmlBody = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -139,7 +179,8 @@ function makeMimeMessage(to, from, subject, messageText, businessCardImage = '')
   </div>
 </body>
 </html>
-  `.trim();
+    `.trim();
+  }
 
   const boundary = `----=_Part_${Date.now()}`;
   const str = [
@@ -153,7 +194,7 @@ function makeMimeMessage(to, from, subject, messageText, businessCardImage = '')
     'Content-Type: text/plain; charset=utf-8',
     'Content-Transfer-Encoding: 8bit',
     '',
-    messageText,
+    plainTextBody,
     '',
     `--${boundary}`,
     'Content-Type: text/html; charset=utf-8',
