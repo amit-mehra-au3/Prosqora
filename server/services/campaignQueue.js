@@ -140,6 +140,13 @@ async function getEmailSettings(userId) {
   };
 }
 
+function parseDbDate(dateStr) {
+  if (!dateStr) return new Date();
+  if (typeof dateStr !== 'string') return new Date(dateStr);
+  const isoStr = dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T') + (dateStr.endsWith('Z') ? '' : 'Z');
+  return new Date(isoStr);
+}
+
 /**
  * Calculate Server-Side Authoritative 499 / Rolling 24-Hour Sending Capacity
  */
@@ -159,13 +166,13 @@ async function getSendingCapacity(userId) {
 
   if (used > 0) {
     const oldestSend = recentSends[0];
-    const oldestTime = new Date(oldestSend.sent_at).getTime();
-    const availableTime = oldestTime + (24 * 60 * 60 * 1000);
-    const nowTime = Date.now();
+    if (oldestSend && oldestSend.sent_at) {
+      const oldestTime = parseDbDate(oldestSend.sent_at).getTime();
+      const availableTime = oldestTime + (24 * 60 * 60 * 1000);
+      const nowTime = Date.now();
 
-    if (availableTime > nowTime) {
       nextAvailableAt = new Date(availableTime).toISOString();
-      secondsUntilAvailable = Math.ceil((availableTime - nowTime) / 1000);
+      secondsUntilAvailable = Math.max(0, Math.ceil((availableTime - nowTime) / 1000));
     }
   }
 

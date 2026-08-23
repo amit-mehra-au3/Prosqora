@@ -21,12 +21,20 @@ export default function GmailSendingCapacityCard({ capacity = {}, onRefresh }) {
         return;
       }
 
-      const now = Date.now();
-      const target = new Date(nextAvailableAt).getTime();
-      const diffMs = target - now;
+      // Safe ISO date string parsing
+      let targetTime;
+      try {
+        const cleanIso = nextAvailableAt.includes('T') ? nextAvailableAt : nextAvailableAt.replace(' ', 'T') + (nextAvailableAt.endsWith('Z') ? '' : 'Z');
+        targetTime = new Date(cleanIso).getTime();
+      } catch (e) {
+        targetTime = new Date(nextAvailableAt).getTime();
+      }
 
-      if (diffMs <= 0) {
-        setCountdownStr('Capacity Available Now');
+      const now = Date.now();
+      const diffMs = targetTime - now;
+
+      if (isNaN(diffMs) || diffMs <= 0) {
+        setCountdownStr('');
         if (onRefresh) onRefresh();
         return;
       }
@@ -35,7 +43,11 @@ export default function GmailSendingCapacityCard({ capacity = {}, onRefresh }) {
       const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
       const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
 
-      setCountdownStr(`${hours}h ${mins}m ${secs}s`);
+      const formattedHours = hours > 0 ? `${hours}h ` : '';
+      const formattedMins = `${mins}m `;
+      const formattedSecs = `${secs < 10 ? '0' : ''}${secs}s`;
+
+      setCountdownStr(`${formattedHours}${formattedMins}${formattedSecs}`);
     };
 
     updateCountdown();
@@ -45,7 +57,7 @@ export default function GmailSendingCapacityCard({ capacity = {}, onRefresh }) {
   }, [nextAvailableAt]);
 
   const formattedNextDate = nextAvailableAt
-    ? new Date(nextAvailableAt).toLocaleString('en-US', {
+    ? new Date(nextAvailableAt.includes('T') ? nextAvailableAt : nextAvailableAt.replace(' ', 'T') + (nextAvailableAt.endsWith('Z') ? '' : 'Z')).toLocaleString('en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
@@ -58,7 +70,7 @@ export default function GmailSendingCapacityCard({ capacity = {}, onRefresh }) {
   return (
     <div className={`industrial-card p-6 space-y-4 border transition-all ${
       isCapReached
-        ? 'border-amber-500/60 bg-amber-950/20 shadow-lg ring-1 ring-amber-500/40'
+        ? 'border-amber-500/60 bg-amber-950/25 shadow-xl ring-1 ring-amber-500/40'
         : 'border-industrial-800 bg-industrial-950/90'
     }`}>
       
@@ -98,12 +110,17 @@ export default function GmailSendingCapacityCard({ capacity = {}, onRefresh }) {
 
       {/* Cap Warning Banner if 499 reached */}
       {isCapReached && (
-        <div className="p-4 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-300 text-xs font-semibold flex items-start gap-3 animate-pulse">
+        <div className="p-4 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-300 text-xs font-semibold flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
           <div className="space-y-1">
-            <p className="font-extrabold text-white text-sm">Daily Sending Safety Cap Reached (499 / 499)</p>
+            <p className="font-extrabold text-white text-sm">Daily Sending Safety Cap Reached ({used} / {limit})</p>
             <p className="text-amber-200/90 text-xs leading-relaxed">
               ProSQORA has automatically paused queue sending to protect your connected business Gmail account. Sending will automatically resume as capacity opens up.
+              {countdownStr && (
+                <span className="block mt-1 font-bold text-white text-xs">
+                  ⏳ Next capacity slot opens in <strong className="text-amber-400 font-mono text-sm underline">{countdownStr}</strong> {formattedNextDate ? `(at ${formattedNextDate})` : ''}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -149,9 +166,15 @@ export default function GmailSendingCapacityCard({ capacity = {}, onRefresh }) {
 
         <div className="col-span-2 sm:col-span-1 p-3 bg-industrial-900/90 rounded-xl border border-industrial-800 text-center">
           <span className="text-[10px] text-industrial-400 uppercase font-mono block">Next Capacity Slot</span>
-          <span className="text-xs font-bold font-mono text-brand-orange truncate block">
-            {countdownStr || 'Capacity Available'}
-          </span>
+          {countdownStr ? (
+            <span className="text-sm font-extrabold font-mono text-amber-400 truncate block animate-pulse">
+              In {countdownStr}
+            </span>
+          ) : (
+            <span className="text-xs font-bold font-mono text-emerald-400 truncate block">
+              Capacity Available
+            </span>
+          )}
         </div>
 
       </div>
@@ -161,12 +184,16 @@ export default function GmailSendingCapacityCard({ capacity = {}, onRefresh }) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-industrial-900 rounded-xl border border-industrial-800/80 text-xs font-mono text-industrial-300 gap-2">
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-brand-orange shrink-0" />
-            <span>Next Capacity Available: <strong>{formattedNextDate}</strong></span>
+            <span>Next Capacity Slot Opens: <strong>{formattedNextDate}</strong></span>
           </div>
 
-          {countdownStr && (
-            <div className="px-2.5 py-1 rounded bg-brand-orange/15 text-brand-orange font-bold border border-brand-orange/30 shrink-0 text-center">
-              Available in: {countdownStr}
+          {countdownStr ? (
+            <div className="px-3 py-1 rounded bg-brand-orange/20 text-brand-orange font-bold border border-brand-orange/40 shrink-0 text-center text-xs animate-pulse">
+              Countdown: {countdownStr}
+            </div>
+          ) : (
+            <div className="px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30 shrink-0 text-center text-xs">
+              Capacity Available Now
             </div>
           )}
         </div>
