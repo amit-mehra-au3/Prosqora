@@ -255,9 +255,11 @@ export default function CrmFilterBar({ filters, setFilters, totalCount, filtered
       categoryMatchMode: 'ANY', // 'ANY' or 'ALL'
       leadStatus: 'All',
       websiteStatus: 'All',
+      whatsappFilter: 'All',
       hasPhone: false,
       hasEmail: false,
       hasWhatsApp: false,
+      onlyWhatsApp: false,
       hasContactPerson: false,
       opportunities: []
     });
@@ -265,6 +267,8 @@ export default function CrmFilterBar({ filters, setFilters, totalCount, filtered
 
   // Preset Buttons Configurations
   const presets = [
+    { label: '💬 Has WhatsApp', config: { hasWhatsApp: true, whatsappFilter: 'Has WhatsApp' } },
+    { label: '💬 Only WhatsApp', config: { onlyWhatsApp: true, whatsappFilter: 'Only WhatsApp' } },
     { label: 'Gurgaon OEMs', config: { cities: ['Gurgaon'], categories: ['OEM Manufacturers', 'Industrial OEM', 'CNC Machine Manufacturers'] } },
     { label: 'Delhi NCR Automation', config: { cities: ['Gurgaon', 'Delhi', 'Noida', 'Faridabad'], categories: ['Industrial Automation', 'PLC Automation', 'HMI / SCADA Integrators'] } },
     { label: 'CNC Manufacturers', config: { categories: ['CNC Machine Manufacturers', 'CNC Machine Builders'] } },
@@ -283,9 +287,11 @@ export default function CrmFilterBar({ filters, setFilters, totalCount, filtered
     (filters.opportunities && filters.opportunities.length > 0) ||
     filters.leadStatus !== 'All' ||
     filters.websiteStatus !== 'All' ||
+    (filters.whatsappFilter && filters.whatsappFilter !== 'All') ||
     filters.hasPhone ||
     filters.hasEmail ||
     filters.hasWhatsApp ||
+    filters.onlyWhatsApp ||
     filters.hasContactPerson;
 
   return (
@@ -560,12 +566,45 @@ export default function CrmFilterBar({ filters, setFilters, totalCount, filtered
             {/* 3. Contact Availability & Website Status & Automation Opportunities */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               
-              {/* Contact Availability Checkboxes */}
+              {/* Contact & WhatsApp Availability Checkboxes */}
               <div className="space-y-2 p-3 bg-industrial-950/60 rounded-xl border border-industrial-800">
-                <span className="font-semibold text-industrial-300 block text-[11px] uppercase tracking-wider">
-                  Contact Availability
-                </span>
-                <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-industrial-300 block text-[11px] uppercase tracking-wider">
+                    Contact & WhatsApp Filter
+                  </span>
+                </div>
+
+                <select
+                  value={filters.whatsappFilter || 'All'}
+                  onChange={(e) => setFilters({ ...filters, whatsappFilter: e.target.value })}
+                  className="industrial-input w-full text-xs font-semibold text-brand-orange mb-2"
+                >
+                  <option value="All">WhatsApp: All Leads</option>
+                  <option value="Has WhatsApp">💬 Has WhatsApp Number</option>
+                  <option value="Only WhatsApp">💬 Has ONLY WhatsApp (No Email)</option>
+                  <option value="Email & WhatsApp">📧 Email & WhatsApp Both</option>
+                  <option value="No WhatsApp">🚫 No WhatsApp Available</option>
+                </select>
+
+                <div className="space-y-1.5 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-industrial-200">
+                    <input
+                      type="checkbox"
+                      checked={!!filters.hasWhatsApp}
+                      onChange={(e) => setFilters({ ...filters, hasWhatsApp: e.target.checked })}
+                      className="rounded border-industrial-700 bg-industrial-900 text-brand-orange"
+                    />
+                    <span>Has WhatsApp Number</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-industrial-200">
+                    <input
+                      type="checkbox"
+                      checked={!!filters.onlyWhatsApp}
+                      onChange={(e) => setFilters({ ...filters, onlyWhatsApp: e.target.checked })}
+                      className="rounded border-industrial-700 bg-industrial-900 text-brand-orange"
+                    />
+                    <span className="text-amber-300 font-bold">Has ONLY WhatsApp (No Email)</span>
+                  </label>
                   <label className="flex items-center gap-2 cursor-pointer text-industrial-200">
                     <input
                       type="checkbox"
@@ -583,15 +622,6 @@ export default function CrmFilterBar({ filters, setFilters, totalCount, filtered
                       className="rounded border-industrial-700 bg-industrial-900 text-brand-orange"
                     />
                     <span>Has Email Address</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer text-industrial-200">
-                    <input
-                      type="checkbox"
-                      checked={!!filters.hasWhatsApp}
-                      onChange={(e) => setFilters({ ...filters, hasWhatsApp: e.target.checked })}
-                      className="rounded border-industrial-700 bg-industrial-900 text-brand-orange"
-                    />
-                    <span>Has WhatsApp Number</span>
                   </label>
                 </div>
               </div>

@@ -62,9 +62,11 @@ export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
     categoryMatchMode: 'ANY',
     leadStatus: 'All',
     websiteStatus: 'All',
+    whatsappFilter: 'All',
     hasPhone: false,
     hasEmail: false,
     hasWhatsApp: false,
+    onlyWhatsApp: false,
     hasContactPerson: false,
     opportunities: []
   });
@@ -92,7 +94,7 @@ export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
     return allLeads.filter((lead) => {
       if (filters.search) {
         const q = filters.search.toLowerCase();
-        const searchableText = `${lead.company_name} ${lead.website} ${lead.phone} ${lead.email} ${lead.location} ${lead.city} ${lead.state} ${lead.products} ${lead.services} ${lead.notes}`.toLowerCase();
+        const searchableText = `${lead.company_name} ${lead.website} ${lead.phone} ${lead.whatsapp} ${lead.email} ${lead.location} ${lead.city} ${lead.state} ${lead.products} ${lead.services} ${lead.notes}`.toLowerCase();
         if (!searchableText.includes(q)) return false;
       }
 
@@ -117,9 +119,26 @@ export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
         if (!matchState) return false;
       }
 
-      if (filters.hasPhone && !lead.phone) return false;
-      if (filters.hasEmail && !lead.email) return false;
+      const hasWa = !!(
+        (lead.whatsapp && lead.whatsapp.trim()) ||
+        (lead.whatsapp_url && lead.whatsapp_url.trim()) ||
+        (lead.phone && lead.phone.trim() && (lead.phone.includes('+91') || lead.phone.replace(/\D/g, '').length >= 10))
+      );
+      const hasEmail = !!(lead.email && lead.email.trim());
+      const hasPhone = !!(lead.phone && lead.phone.trim());
+
+      if (filters.hasPhone && !hasPhone) return false;
+      if (filters.hasEmail && !hasEmail) return false;
       if (filters.hasContactPerson && !lead.contact_person) return false;
+      if (filters.hasWhatsApp && !hasWa) return false;
+      if (filters.onlyWhatsApp && (!hasWa || hasEmail)) return false;
+
+      if (filters.whatsappFilter && filters.whatsappFilter !== 'All') {
+        if (filters.whatsappFilter === 'Has WhatsApp' && !hasWa) return false;
+        if (filters.whatsappFilter === 'Only WhatsApp' && (!hasWa || hasEmail)) return false;
+        if (filters.whatsappFilter === 'Email & WhatsApp' && (!hasWa || !hasEmail)) return false;
+        if (filters.whatsappFilter === 'No WhatsApp' && hasWa) return false;
+      }
 
       if (filters.opportunities && filters.opportunities.length > 0) {
         const oppText = `${lead.products} ${lead.services} ${lead.notes} ${lead.category}`.toUpperCase();
@@ -417,6 +436,7 @@ export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
                 <th className="p-3">Categories</th>
                 <th className="p-3">Website</th>
                 <th className="p-3">Phone</th>
+                <th className="p-3">WhatsApp</th>
                 <th className="p-3">Email</th>
                 <th className="p-3">Website Status</th>
                 <th className="p-3">Verification</th>
@@ -429,14 +449,14 @@ export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
             <tbody className="divide-y divide-industrial-800/60 font-mono text-[11px]">
               {loading ? (
                 <tr>
-                  <td colSpan="13" className="p-8 text-center text-industrial-400">
+                  <td colSpan="14" className="p-8 text-center text-industrial-400">
                     <Database className="w-6 h-6 text-brand-orange animate-spin mx-auto mb-2" />
                     Loading spreadsheet leads...
                   </td>
                 </tr>
               ) : filteredLeads.length === 0 ? (
                 <tr>
-                  <td colSpan="13" className="p-8 text-center text-industrial-400">
+                  <td colSpan="14" className="p-8 text-center text-industrial-400">
                     No leads match your current filter parameters.
                   </td>
                 </tr>
@@ -542,6 +562,27 @@ export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
                           </a>
                         ) : (
                           <span className="text-industrial-500 italic">—</span>
+                        )}
+                      </td>
+
+                      {/* WhatsApp */}
+                      <td className="p-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        {lead.whatsapp || lead.whatsapp_url || (lead.phone && (lead.phone.includes('+91') || lead.phone.replace(/\D/g, '').length >= 10)) ? (
+                          <a
+                            href={
+                              lead.whatsapp_url ||
+                              `https://wa.me/${(lead.whatsapp || lead.phone).replace(/\D/g, '').slice(-10)}`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold text-[10px] border border-emerald-500/30 transition-all"
+                            title="Chat on WhatsApp"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>WhatsApp</span>
+                          </a>
+                        ) : (
+                          <span className="text-industrial-500 italic text-[11px]">—</span>
                         )}
                       </td>
 
