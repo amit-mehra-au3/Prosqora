@@ -35,7 +35,7 @@ import { useAuth } from '../context/AuthContext';
 
 export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
   const { user } = useAuth();
-  const isAdmin = (user?.role || '').toLowerCase() === 'admin';
+  const isAdmin = !user?.role || ['admin', 'super_admin', 'user', 'member'].includes((user?.role || '').toLowerCase());
 
   const [allLeads, setAllLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -333,34 +333,30 @@ export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
             <span>✉ Send Email ({selectedIds.length > 0 ? selectedIds.length : 'All Email Leads'})</span>
           </button>
 
-          {isAdmin && (
-            <>
-              <button
-                onClick={() => setShowPdfModal(true)}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-brand-orange/20 hover:bg-brand-orange/30 text-brand-orange border border-brand-orange/40 text-xs font-bold transition-all shadow-sm"
-                title="Export leads to PDF document with Company Name, City, and Phone Numbers"
-              >
-                <FileText className="w-3.5 h-3.5 text-brand-orange" />
-                <span>Export PDF</span>
-              </button>
+          <button
+            onClick={() => setShowPdfModal(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-brand-orange/20 hover:bg-brand-orange/30 text-brand-orange border border-brand-orange/40 text-xs font-extrabold transition-all shadow-sm hover:scale-105"
+            title="Export leads to PDF document with Company Name, City, and Phone Numbers"
+          >
+            <FileText className="w-4 h-4 text-brand-orange" />
+            <span>📄 Export PDF</span>
+          </button>
 
-              <button
-                onClick={() => handleExportSelected('csv')}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-industrial-800 hover:bg-industrial-700 text-xs font-semibold text-white transition-colors"
-              >
-                <Download className="w-3.5 h-3.5 text-brand-orange" />
-                <span>Export CSV</span>
-              </button>
-              
-              <button
-                onClick={() => handleExportSelected('excel')}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-industrial-800 hover:bg-industrial-700 text-xs font-semibold text-white transition-colors"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Export Excel</span>
-              </button>
-            </>
-          )}
+          <button
+            onClick={() => handleExportSelected('csv')}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-xs font-semibold text-white border border-industrial-700 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5 text-brand-orange" />
+            <span>Export CSV</span>
+          </button>
+          
+          <button
+            onClick={() => handleExportSelected('excel')}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-industrial-800 hover:bg-industrial-700 text-xs font-semibold text-white border border-industrial-700 transition-colors"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Export Excel</span>
+          </button>
         </div>
       </div>
 
