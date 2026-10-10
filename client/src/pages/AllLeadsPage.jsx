@@ -6,10 +6,12 @@ import CampaignProgressModal from '../components/CampaignProgressModal';
 import CsvImportModal from '../components/CsvImportModal';
 import DuplicateModal from '../components/DuplicateModal';
 import RefreshWebsitesModal from '../components/RefreshWebsitesModal';
+import PdfExportModal from '../components/PdfExportModal';
 import {
   Database,
   Download,
   FileSpreadsheet,
+  FileText,
   Trash2,
   ExternalLink,
   Eye,
@@ -47,6 +49,7 @@ export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
   const [showCsvModal, setShowCsvModal] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [showRefreshModal, setShowRefreshModal] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
 
   // Bulk Delete Confirmation Modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -332,6 +335,15 @@ export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
 
           {isAdmin && (
             <>
+              <button
+                onClick={() => setShowPdfModal(true)}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-brand-orange/20 hover:bg-brand-orange/30 text-brand-orange border border-brand-orange/40 text-xs font-bold transition-all shadow-sm"
+                title="Export leads to PDF document with Company Name, City, and Phone Numbers"
+              >
+                <FileText className="w-3.5 h-3.5 text-brand-orange" />
+                <span>Export PDF</span>
+              </button>
+
               <button
                 onClick={() => handleExportSelected('csv')}
                 className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-industrial-800 hover:bg-industrial-700 text-xs font-semibold text-white transition-colors"
@@ -723,6 +735,16 @@ export default function AllLeadsPage({ setSelectedLead, refreshTrigger }) {
             setActiveCampaignProgress(null);
             fetchLeads();
           }}
+        />
+      )}
+
+      {/* PDF EXPORT MODAL */}
+      {showPdfModal && (
+        <PdfExportModal
+          allLeads={allLeads}
+          filteredLeads={filteredLeads}
+          selectedIds={selectedIds}
+          onClose={() => setShowPdfModal(false)}
         />
       )}
 
