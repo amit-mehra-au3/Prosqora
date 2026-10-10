@@ -13,7 +13,9 @@ import {
   Layers,
   Sparkles,
   Eye,
-  Sliders
+  Sliders,
+  Maximize2,
+  Type
 } from 'lucide-react';
 
 export default function PdfExportModal({
@@ -38,8 +40,13 @@ export default function PdfExportModal({
   const [includeCategory, setIncludeCategory] = useState(true);
   const [includeWebsite, setIncludeWebsite] = useState(false);
 
+  // Layout & Formatting Controls
+  const [pdfOrientation, setPdfOrientation] = useState('portrait'); // 'portrait' | 'landscape'
+  const [fontSizeMode, setFontSizeMode] = useState('standard'); // 'compact' | 'standard' | 'large'
+  const [includeCompanyHeader, setIncludeCompanyHeader] = useState(true);
+
   const [documentTitle, setDocumentTitle] = useState(
-    'AM Automation Trading — B2B Lead Discovery Report'
+    'AM Automation Trading — Industrial Leads Directory'
   );
 
   // Calculate leads to export based on selected scope
@@ -58,6 +65,20 @@ export default function PdfExportModal({
 
   const targetLeads = getTargetLeads();
 
+  // Get unique cities count
+  const uniqueCitiesCount = new Set(
+    targetLeads.map((l) => (l.city || '').trim()).filter(Boolean)
+  ).size;
+
+  // Font Size Settings Map
+  const fontSizeMap = {
+    compact: { body: '10px', table: '10px', header: '9.5px', padding: '5px 8px' },
+    standard: { body: '11px', table: '11px', header: '10px', padding: '7px 10px' },
+    large: { body: '12px', table: '12px', header: '11px', padding: '9px 12px' }
+  };
+
+  const currentFontSize = fontSizeMap[fontSizeMode] || fontSizeMap.standard;
+
   // Generate Styled A4 Printable HTML Document & Open Print/Save as PDF Dialog
   const handleGeneratePdf = () => {
     if (targetLeads.length === 0) {
@@ -65,7 +86,7 @@ export default function PdfExportModal({
       return;
     }
 
-    const printWindow = window.open('', '_blank', 'width=1100,height=850');
+    const printWindow = window.open('', '_blank', 'width=1150,height=900');
     if (!printWindow) {
       alert('Pop-up blocked! Please allow pop-ups for this site to export PDF.');
       return;
@@ -73,13 +94,13 @@ export default function PdfExportModal({
 
     // Build Table Header HTML
     let tableHeadersHtml = '';
-    if (includeSerialNo) tableHeadersHtml += '<th style="width: 45px; text-align: center;">#</th>';
+    if (includeSerialNo) tableHeadersHtml += '<th style="width: 42px; text-align: center;">#</th>';
     if (includeCompanyName) tableHeadersHtml += '<th>Company Name</th>';
-    if (includeCity) tableHeadersHtml += '<th style="width: 110px;">City</th>';
-    if (includePhone) tableHeadersHtml += '<th style="width: 140px;">Mobile / Phone</th>';
-    if (includeEmail) tableHeadersHtml += '<th style="width: 180px;">Email Address</th>';
-    if (includeCategory) tableHeadersHtml += '<th style="width: 140px;">Category</th>';
-    if (includeWebsite) tableHeadersHtml += '<th style="width: 140px;">Website</th>';
+    if (includeCity) tableHeadersHtml += '<th style="width: 120px;">City</th>';
+    if (includePhone) tableHeadersHtml += '<th style="width: 145px;">Mobile / Phone</th>';
+    if (includeEmail) tableHeadersHtml += '<th style="width: 185px;">Email Address</th>';
+    if (includeCategory) tableHeadersHtml += '<th style="width: 150px;">Category</th>';
+    if (includeWebsite) tableHeadersHtml += '<th style="width: 150px;">Website</th>';
 
     // Build Table Rows HTML
     let tableRowsHtml = '';
@@ -92,14 +113,39 @@ export default function PdfExportModal({
         catStr = lead.category || '';
       }
 
+      const cleanCity = (lead.city || 'Other').trim();
+      const cleanPhone = (lead.phone || '—').trim();
+      const cleanEmail = (lead.email || '—').trim();
+      const cleanComp = (lead.company_name || '—').trim();
+      const cleanWeb = (lead.website || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+
       tableRowsHtml += `<tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">`;
-      if (includeSerialNo) tableRowsHtml += `<td style="text-align: center; font-weight: bold; color: #64748b;">${idx + 1}</td>`;
-      if (includeCompanyName) tableRowsHtml += `<td style="font-weight: bold; color: #0f172a;">${escapeHtml(lead.company_name || '—')}</td>`;
-      if (includeCity) tableRowsHtml += `<td style="color: #334155;">${escapeHtml(lead.city || '—')}</td>`;
-      if (includePhone) tableRowsHtml += `<td style="font-family: monospace; font-weight: 600; color: #0284c7;">${escapeHtml(lead.phone || '—')}</td>`;
-      if (includeEmail) tableRowsHtml += `<td style="font-family: monospace; color: #0f766e;">${escapeHtml(lead.email || '—')}</td>`;
-      if (includeCategory) tableRowsHtml += `<td style="color: #475569; font-size: 11px;">${escapeHtml(catStr || 'Industrial')}</td>`;
-      if (includeWebsite) tableRowsHtml += `<td style="font-family: monospace; color: #2563eb; font-size: 11px;">${escapeHtml((lead.website || '').replace(/^https?:\/\//, ''))}</td>`;
+      
+      if (includeSerialNo) {
+        tableRowsHtml += `<td class="sr-no" style="padding: ${currentFontSize.padding};">${idx + 1}</td>`;
+      }
+      if (includeCompanyName) {
+        tableRowsHtml += `<td class="company-cell" style="padding: ${currentFontSize.padding};">
+          <div>${escapeHtml(cleanComp)}</div>
+          ${lead.lead_id ? `<div style="font-size: 9px; color: #94a3b8; font-weight: 500; font-family: monospace; margin-top: 1px;">ID: ${escapeHtml(lead.lead_id)}</div>` : ''}
+        </td>`;
+      }
+      if (includeCity) {
+        tableRowsHtml += `<td style="padding: ${currentFontSize.padding};"><span class="city-badge">${escapeHtml(cleanCity)}</span></td>`;
+      }
+      if (includePhone) {
+        tableRowsHtml += `<td class="phone-cell" style="padding: ${currentFontSize.padding};">${escapeHtml(cleanPhone)}</td>`;
+      }
+      if (includeEmail) {
+        tableRowsHtml += `<td class="email-cell" style="padding: ${currentFontSize.padding};">${escapeHtml(cleanEmail)}</td>`;
+      }
+      if (includeCategory) {
+        tableRowsHtml += `<td class="category-cell" style="padding: ${currentFontSize.padding};">${escapeHtml(catStr || 'Industrial Automation')}</td>`;
+      }
+      if (includeWebsite) {
+        tableRowsHtml += `<td class="website-cell" style="padding: ${currentFontSize.padding};">${escapeHtml(cleanWeb || '—')}</td>`;
+      }
+
       tableRowsHtml += '</tr>';
     });
 
@@ -111,120 +157,289 @@ export default function PdfExportModal({
         <title>${escapeHtml(documentTitle)}</title>
         <style>
           @page {
-            size: A4 portrait;
-            margin: 12mm;
+            size: A4 ${pdfOrientation};
+            margin: 10mm 12mm 12mm 12mm;
           }
+          thead { display: table-header-group; }
+          tfoot { display: table-footer-group; }
+          tr { page-break-inside: avoid; }
+
           body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            color: #1e293b;
+            color: #0f172a;
             margin: 0;
             padding: 0;
-            font-size: 12px;
+            font-size: ${currentFontSize.body};
             background-color: #ffffff;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
+
+          .top-accent-bar {
+            height: 5px;
+            background: linear-gradient(90deg, #0b1329 0%, #f97316 65%, #fb923c 100%);
+            margin-bottom: 12px;
+            border-radius: 3px;
+          }
+
           .header-container {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid #f97316;
-            padding-bottom: 12px;
-            margin-bottom: 16px;
+            align-items: flex-start;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+            margin-bottom: 12px;
           }
+
+          .brand-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+
+          .logo-badge {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+            color: #ffffff;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 20px;
+            letter-spacing: -1px;
+            box-shadow: 0 4px 10px rgba(249, 115, 22, 0.25);
+          }
+
           .brand-title {
             font-size: 18px;
             font-weight: 900;
-            color: #0f172a;
-            letter-spacing: -0.5px;
+            color: #0b1329;
+            letter-spacing: -0.3px;
             margin: 0;
+            line-height: 1.1;
           }
+
           .brand-subtitle {
-            font-size: 11px;
+            font-size: 10.5px;
             color: #f97316;
-            font-weight: 700;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
             margin-top: 2px;
           }
-          .meta-info {
+
+          .company-contact-line {
+            font-size: 9.5px;
+            color: #475569;
+            margin-top: 3px;
+            font-weight: 500;
+          }
+
+          .doc-meta {
             text-align: right;
-            font-size: 10px;
+          }
+
+          .doc-type-badge {
+            display: inline-block;
+            background-color: #0b1329;
+            color: #ffffff;
+            font-size: 9.5px;
+            font-weight: 800;
+            text-transform: uppercase;
+            padding: 3px 8px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+          }
+
+          .doc-meta-text {
+            font-size: 9.5px;
             color: #64748b;
-            font-family: monospace;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            line-height: 1.45;
           }
-          .stats-bar {
-            display: flex;
-            gap: 16px;
-            background-color: #f1f5f9;
-            padding: 8px 12px;
+
+          .summary-card {
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-left: 4px solid #f97316;
             border-radius: 6px;
-            margin-bottom: 16px;
+            padding: 8px 14px;
+            margin-bottom: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             font-size: 11px;
-            font-weight: 600;
           }
+
+          .summary-title {
+            font-weight: 800;
+            color: #0f172a;
+            font-size: 11.5px;
+          }
+
+          .summary-metrics {
+            display: flex;
+            gap: 18px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          }
+
+          .metric-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10.5px;
+          }
+
+          .metric-value {
+            font-weight: 800;
+            color: #ea580c;
+          }
+
           table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 11px;
+            font-size: ${currentFontSize.table};
+            margin-top: 4px;
           }
+
           th {
-            background-color: #0f172a;
-            color: #ffffff;
-            font-weight: 700;
+            background-color: #0b1329 !important;
+            color: #ffffff !important;
+            font-weight: 800;
             text-transform: uppercase;
-            font-size: 10px;
+            font-size: ${currentFontSize.header};
             letter-spacing: 0.5px;
             padding: 8px 10px;
             text-align: left;
-            border: 1px solid #0f172a;
+            border: 1px solid #0b1329;
           }
+
           td {
-            padding: 7px 10px;
             border: 1px solid #cbd5e1;
             vertical-align: middle;
+            line-height: 1.35;
           }
-          tr {
-            page-break-inside: avoid;
+
+          tr:nth-child(even) {
+            background-color: #f8fafc !important;
           }
-          .footer {
-            margin-top: 20px;
+
+          .sr-no {
+            text-align: center;
+            font-weight: 800;
+            color: #64748b;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          }
+
+          .company-cell {
+            font-weight: 800;
+            color: #0f172a;
+          }
+
+          .city-badge {
+            display: inline-block;
+            background-color: #f1f5f9;
+            color: #1e293b;
+            font-weight: 700;
+            font-size: 9.5px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid #cbd5e1;
+          }
+
+          .phone-cell {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-weight: 700;
+            color: #0284c7;
+            white-space: nowrap;
+          }
+
+          .email-cell {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            color: #0d9488;
+            font-weight: 600;
+          }
+
+          .category-cell {
+            color: #475569;
+            font-weight: 600;
+          }
+
+          .website-cell {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            color: #2563eb;
+          }
+
+          .report-footer {
+            margin-top: 18px;
             padding-top: 10px;
-            border-top: 1px solid #e2e8f0;
-            font-size: 10px;
-            color: #94a3b8;
+            border-top: 1px solid #cbd5e1;
             display: flex;
             justify-content: space-between;
+            align-items: center;
+            font-size: 9.5px;
+            color: #64748b;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
           }
+
           @media print {
-            .no-print { display: none; }
+            .no-print { display: none !important; }
           }
         </style>
       </head>
       <body>
-        <div class="no-print" style="position: fixed; top: 12px; right: 12px; z-index: 9999; display: flex; gap: 8px;">
-          <button onclick="window.print()" style="background: #f97316; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 13px; shadow: 0 4px 12px rgba(0,0,0,0.15);">
-            📄 Save as PDF / Print
+
+        {/* Top Fixed Floating Control Toolbar */}
+        <div class="no-print" style="position: fixed; top: 14px; right: 14px; z-index: 9999; display: flex; gap: 10px; background: rgba(15, 23, 42, 0.92); padding: 8px 14px; border-radius: 12px; backdrop-filter: blur(8px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);">
+          <button onclick="window.print()" style="background: linear-gradient(135deg, #f97316, #ea580c); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);">
+            📄 SAVE AS PDF / PRINT
           </button>
-          <button onclick="window.close()" style="background: #475569; color: white; border: none; padding: 10px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 13px;">
+          <button onclick="window.close()" style="background: #334155; color: white; border: none; padding: 10px 14px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px;">
             Close
           </button>
         </div>
 
+        <div class="top-accent-bar"></div>
+
+        {/* Company B2B Header */}
+        ${
+          includeCompanyHeader
+            ? `
         <div class="header-container">
-          <div>
-            <h1 class="brand-title">AM AUTOMATION TRADING</h1>
-            <div class="brand-subtitle">INDUSTRIAL AUTOMATION & ELECTRICAL COMPONENTS SUPPLIERS</div>
+          <div class="brand-section">
+            <div class="logo-badge">AM</div>
+            <div>
+              <h1 class="brand-title">AM AUTOMATION TRADING</h1>
+              <div class="brand-subtitle">INDUSTRIAL AUTOMATION & ELECTRICAL COMPONENTS SUPPLIERS</div>
+              <div class="company-contact-line">Phone: +91 86072 85969 | Email: amautomationtrading@gmail.com | GSTIN: 06BJUPA2334N1ZA</div>
+            </div>
           </div>
-          <div class="meta-info">
-            <div>Document: B2B Lead Report</div>
-            <div>Date: ${new Date().toLocaleDateString()}</div>
-            <div>Total Leads: <strong>${targetLeads.length}</strong></div>
+          <div class="doc-meta">
+            <div class="doc-type-badge">CONFIDENTIAL B2B DIRECTORY</div>
+            <div class="doc-meta-text">
+              <div>Date: <strong>${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</strong></div>
+              <div>Time: ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+          </div>
+        </div>
+        `
+            : ''
+        }
+
+        {/* Executive Summary Bar */}
+        <div class="summary-card">
+          <div class="summary-title">${escapeHtml(documentTitle)}</div>
+          <div class="summary-metrics">
+            <div class="metric-item">Total Leads: <span class="metric-value">${targetLeads.length}</span></div>
+            <div class="metric-item">Cities Covered: <span class="metric-value">${uniqueCitiesCount}</span></div>
+            <div class="metric-item">Layout: <span class="metric-value">${pdfOrientation.toUpperCase()}</span></div>
           </div>
         </div>
 
-        <div class="stats-bar">
-          <div>Report Title: <strong>${escapeHtml(documentTitle)}</strong></div>
-          <div>Total Records: <strong>${targetLeads.length} Leads</strong></div>
-          <div>Format: <strong>PDF Printable Report</strong></div>
-        </div>
-
+        {/* Formatted Data Table */}
         <table>
           <thead>
             <tr>${tableHeadersHtml}</tr>
@@ -234,16 +449,17 @@ export default function PdfExportModal({
           </tbody>
         </table>
 
-        <div class="footer">
-          <div>ProSQORA Lead Discovery & CRM — Confidential B2B Report</div>
-          <div>Generated on ${new Date().toLocaleString()}</div>
+        {/* Report Footer */}
+        <div class="report-footer">
+          <div>ProSQORA Lead Discovery & CRM — AM Automation Trading Confidential</div>
+          <div>Page 1 • Total Records: ${targetLeads.length}</div>
         </div>
 
         <script>
           window.onload = function() {
             setTimeout(function() {
               window.print();
-            }, 300);
+            }, 350);
           };
         </script>
       </body>
@@ -272,13 +488,13 @@ export default function PdfExportModal({
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-industrial-800 pb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-brand-orange/20 border border-brand-orange/40 flex items-center justify-center text-brand-orange">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-orange to-amber-500 border border-brand-orange/40 flex items-center justify-center text-white shadow-lg shadow-brand-orange/20">
               <FileText className="w-5 h-5" />
             </div>
             <div>
               <h2 className="font-extrabold text-white text-base">Export Leads to PDF</h2>
               <p className="text-xs text-industrial-400 mt-0.5">
-                Download company names, cities, and mobile numbers in a formatted PDF report.
+                Download formatted B2B leads report with Company Name, City, and Phone Numbers.
               </p>
             </div>
           </div>
@@ -289,7 +505,7 @@ export default function PdfExportModal({
 
         {/* 1. Document Title Input */}
         <div className="space-y-1">
-          <label className="text-xs font-bold text-industrial-300">PDF Report Document Title</label>
+          <label className="text-xs font-bold text-industrial-300">PDF Report Title Header</label>
           <input
             type="text"
             value={documentTitle}
@@ -318,7 +534,7 @@ export default function PdfExportModal({
             >
               <div className="font-extrabold text-xs">All Filtered Leads</div>
               <div className="text-[11px] font-mono mt-1 text-brand-orange font-bold">
-                {filteredLeads.length} Leads
+                {filteredLeads.length} Leads Available
               </div>
             </button>
 
@@ -332,9 +548,9 @@ export default function PdfExportModal({
                   : 'bg-industrial-950 border-industrial-800 text-industrial-400 hover:text-white'
               }`}
             >
-              <div className="font-extrabold text-xs">Selected Leads</div>
+              <div className="font-extrabold text-xs">Selected Leads Only</div>
               <div className="text-[11px] font-mono mt-1 text-emerald-400 font-bold">
-                {selectedLeads.length} Leads
+                {selectedLeads.length} Selected
               </div>
             </button>
 
@@ -349,7 +565,7 @@ export default function PdfExportModal({
             >
               <div className="font-extrabold text-xs">Custom Quantity</div>
               <div className="text-[11px] font-mono mt-1 text-sky-400 font-bold">
-                Specify Limit
+                Set Exact Count
               </div>
             </button>
 
@@ -373,11 +589,102 @@ export default function PdfExportModal({
           )}
         </div>
 
-        {/* 3. Column Selection Checkboxes */}
+        {/* 3. Page Layout & Typography Settings */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          
+          {/* Orientation Selector */}
+          <div className="space-y-1.5 p-3 bg-industrial-950 rounded-xl border border-industrial-800">
+            <label className="text-xs font-bold text-industrial-300 flex items-center gap-1">
+              <Maximize2 className="w-3.5 h-3.5 text-brand-orange" />
+              <span>Page Layout & Orientation</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setPdfOrientation('portrait')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                  pdfOrientation === 'portrait'
+                    ? 'bg-brand-orange text-white border-brand-orange'
+                    : 'bg-industrial-900 border-industrial-800 text-industrial-400 hover:text-white'
+                }`}
+              >
+                📄 Portrait (Standard)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPdfOrientation('landscape')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                  pdfOrientation === 'landscape'
+                    ? 'bg-brand-orange text-white border-brand-orange'
+                    : 'bg-industrial-900 border-industrial-800 text-industrial-400 hover:text-white'
+                }`}
+              >
+                🖼️ Landscape (Wide)
+              </button>
+            </div>
+          </div>
+
+          {/* Font Size Selector */}
+          <div className="space-y-1.5 p-3 bg-industrial-950 rounded-xl border border-industrial-800">
+            <label className="text-xs font-bold text-industrial-300 flex items-center gap-1">
+              <Type className="w-3.5 h-3.5 text-brand-orange" />
+              <span>Table Font Size / Row Density</span>
+            </label>
+            <div className="grid grid-cols-3 gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setFontSizeMode('compact')}
+                className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                  fontSizeMode === 'compact'
+                    ? 'bg-brand-orange text-white border-brand-orange'
+                    : 'bg-industrial-900 border-industrial-800 text-industrial-400 hover:text-white'
+                }`}
+              >
+                Compact (9px)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFontSizeMode('standard')}
+                className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                  fontSizeMode === 'standard'
+                    ? 'bg-brand-orange text-white border-brand-orange'
+                    : 'bg-industrial-900 border-industrial-800 text-industrial-400 hover:text-white'
+                }`}
+              >
+                Standard (11px)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFontSizeMode('large')}
+                className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                  fontSizeMode === 'large'
+                    ? 'bg-brand-orange text-white border-brand-orange'
+                    : 'bg-industrial-900 border-industrial-800 text-industrial-400 hover:text-white'
+                }`}
+              >
+                Large (12px)
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        {/* 4. Column Selection Checkboxes */}
         <div className="space-y-2.5 p-4 bg-industrial-950 rounded-xl border border-industrial-800">
-          <label className="text-xs font-bold text-industrial-200 block uppercase text-[11px] tracking-wider">
-            PDF Table Columns Included:
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-industrial-200 block uppercase text-[11px] tracking-wider">
+              PDF Table Columns Included:
+            </label>
+            <label className="flex items-center gap-1.5 text-[11px] text-industrial-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeCompanyHeader}
+                onChange={(e) => setIncludeCompanyHeader(e.target.checked)}
+                className="rounded border-industrial-700 bg-industrial-900 text-brand-orange"
+              />
+              <span>Include AM Automation Header</span>
+            </label>
+          </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
             
@@ -398,7 +705,7 @@ export default function PdfExportModal({
                 disabled
                 className="rounded border-industrial-700 bg-industrial-900 text-brand-orange"
               />
-              <span>Company Name</span>
+              <span>Company Name (Required)</span>
             </label>
 
             <label className="flex items-center gap-2 cursor-pointer text-white font-bold">
@@ -454,10 +761,10 @@ export default function PdfExportModal({
           </div>
         </div>
 
-        {/* 4. Action Summary Footer */}
+        {/* 5. Action Summary Footer */}
         <div className="flex items-center justify-between pt-4 border-t border-industrial-800">
           <div className="text-xs font-mono text-industrial-400">
-            Ready to download: <strong className="text-brand-orange text-sm font-bold">{targetLeads.length}</strong> leads
+            Export Target: <strong className="text-brand-orange text-sm font-bold">{targetLeads.length}</strong> leads • <span className="text-emerald-400 font-bold">{uniqueCitiesCount} Cities</span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -473,7 +780,7 @@ export default function PdfExportModal({
               type="button"
               onClick={handleGeneratePdf}
               disabled={targetLeads.length === 0}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-orange hover:bg-orange-600 text-white font-extrabold text-xs shadow-lg shadow-brand-orange/20 transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-brand-orange to-orange-600 hover:from-orange-600 hover:to-brand-orange text-white font-extrabold text-xs shadow-lg shadow-brand-orange/25 transition-all disabled:opacity-50 hover:scale-[1.02]"
             >
               <FileText className="w-4 h-4" />
               <span>EXPORT & DOWNLOAD PDF ({targetLeads.length})</span>
